@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
+import { getFromLocalStorage } from "../../utils/LocalStore/LocalStore";
+import { decodedToken } from "../../utils/jwt";
+import { encrypt } from "../../utils/CeyptoSecurity";
+import { useSocketContext } from "../../router/SocketProvider";
 
 
 function generateId() {
@@ -243,6 +247,23 @@ export default function BloodCharity() {
   const watchIdRef = useRef(null);
   const ageRef     = useRef(null);
 
+    const { socket, connected } = useSocketContext();
+
+    useEffect(()=>{
+
+       if (!socket || !connected) return;
+
+
+    },[socket, connected])
+
+
+
+
+
+
+
+
+
   // ── Logger ────────────────────────────────────────────────────────────────
   const log = useCallback((msg, data) => {
     const entry = { ts: new Date().toISOString(), msg, data: data ? JSON.stringify(data) : undefined };
@@ -341,6 +362,15 @@ export default function BloodCharity() {
     });
   };
 
+    const token= getFromLocalStorage(import.meta.env.VITE_TOKEN_NAME);
+  if(!token){
+    return 
+  }
+
+  const user=decodedToken(token);
+
+  
+
   const handleRegister = () => {
     if (!registerForm.name || !registerForm.phone) return;
     const formData    = { name: registerForm.name, blood: registerForm.blood, phone: registerForm.phone, available: registerForm.available };
@@ -350,12 +380,15 @@ export default function BloodCharity() {
     setRegistered(true);
     log("New donor registered", { name: registerForm.name, blood: registerForm.blood });
  
-   console.log("New donor registered",{ name: registerForm.name,phone: registerForm.phone,  blood: registerForm.blood, ...locationData })
+   console.log("New donor registered",{   name: registerForm.name,phone: registerForm.phone,  blood: registerForm.blood, ...locationData })
   };
 
 
 
-  const handleRequest = () => {
+
+
+
+  const handleRequest = async() => {
     if (!reqForm.name || !reqForm.hospital || !reqForm.contact) return;
     const formData    = { name: reqForm.name, blood: reqForm.blood, hospital: reqForm.hospital, urgency: reqForm.urgency, contact: reqForm.contact };
     const locationData = coords ? { lat: coords.lat, lng: coords.lng, accuracy: coords.acc, address: address || "Unknown" } : null;
@@ -363,8 +396,21 @@ export default function BloodCharity() {
     setRequests(prev => [{ id: generateId(), ...reqForm, lat: coords?.lat ?? 26.034, lng: coords?.lng ?? 88.469, createdAt: Date.now() }, ...prev]);
     setReqForm({ name: "", blood: "O+", hospital: "", urgency: "normal", contact: "" });
     log("Blood request created", { blood: reqForm.blood, hospital: reqForm.hospital, urgency: reqForm.urgency, locationData });
-    console.log("Handel Requst",{ blood: reqForm.blood, phone: reqForm.contact, hospital: reqForm.hospital, urgency: reqForm.urgency, locationData })
-  
+
+    console.log("Handel Requst New",{userId: user.id, blood: reqForm.blood, phone: reqForm.contact, hospital: reqForm.hospital, urgency: reqForm.urgency, locationData })
+    const encrypted= await encrypt({userId: user.id, blood: reqForm.blood, phone: reqForm.contact, hospital: reqForm.hospital, urgency: reqForm.urgency, locationData }, user.generate_secret_key) 
+   if (socket && connected) {
+      socket.emit("blood_request", encrypted, (res) => {
+        if (!res.success) {
+      
+         console.log("error blood request")
+        }
+        console.log("successfully blood request recorded")
+
+        
+      });
+    }
+
   };
 
   const nearbyAvailable = donorsWithDist.filter(d => d.dist !== null && d.dist <= searchRadius && d.available).length;
