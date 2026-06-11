@@ -5,6 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { Toaster } from "react-hot-toast";
 import router from "./router/router";
+import { SocketProvider } from "./router/SocketProvider";
+import BloodRequestNotifications from "./components/Location/notification/BloodRequestNotifications";
+
 // import { useSocket } from "./hooks/useSocket";
 
 
@@ -25,10 +28,19 @@ function App() {
 
     
 
-       <QueryClientProvider client={queryClient}>
+
+        <SocketProvider>
+      <QueryClientProvider client={queryClient}>
+        <BloodRequestNotifications />
+
         <RouterProvider router={router} />
-         <Toaster position="top-center" toastOptions={{ duration: 1500 }} />
+
+        <Toaster
+          position="top-center"
+          toastOptions={{ duration: 1500 }}
+        />
       </QueryClientProvider>
+    </SocketProvider>
 
 
   

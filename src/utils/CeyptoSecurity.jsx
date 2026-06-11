@@ -1,144 +1,151 @@
-// ─────────────────────────────────────────────
-//  Constants
-// ─────────────────────────────────────────────
-const IV_LENGTH = 12;   // 96-bit IV recommended for GCM
-const TAG_LENGTH = 16;  // 128-bit auth tag
-const KEY_LENGTH = 32;  // 256-bit key
-const PBKDF2_ITERATIONS = 100_000;
 
-// ─────────────────────────────────────────────
-//  Helpers: hex ↔ Uint8Array
-// ─────────────────────────────────────────────
-function toHex(buf) {
-  return Array.from(new Uint8Array(buf))
+const ALGORITHM = "AES-GCM";
+const IV_LENGTH = 12;
+const SALT_LENGTH = 16;
+const KEY_LENGTH = 256;
+const PBKDF2_ITERATIONS = 100000;
+
+
+function bufToHex(buffer) {
+  return Array.from(buffer)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
-function fromHex(hex) {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+function hexToBuf(hex) {
+  if (hex.length % 2 !== 0) throw new Error("Invalid hex string");
+  const view = new Uint8Array(hex.length / 2);
+
+  for (let i = 0; i < view.length; i++) {
+    view[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
   }
-  return bytes;
+
+  return view;
 }
 
-// ─────────────────────────────────────────────
-//  Key derivation  (PBKDF2 → 32-byte AES-GCM key)
-// ─────────────────────────────────────────────
+
 async function deriveKey(secret, salt) {
   const enc = new TextEncoder();
-  const baseKey = await window.crypto.subtle.importKey(
+  const secretBuffer = enc.encode(secret);
+
+  const baseKey = await globalThis.crypto.subtle.importKey(
     "raw",
-    enc.encode(secret),
+    secretBuffer,
     "PBKDF2",
     false,
     ["deriveKey"]
   );
-  return window.crypto.subtle.deriveKey(
+
+  return await globalThis.crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt,
+      salt: salt.buffer,
       iterations: PBKDF2_ITERATIONS,
       hash: "SHA-256",
     },
     baseKey,
-    { name: "AES-GCM", length: KEY_LENGTH * 8 },
+    { name: ALGORITHM, length: KEY_LENGTH },
     false,
     ["encrypt", "decrypt"]
   );
 }
 
-// ─────────────────────────────────────────────
-//  Low-level: encrypt a UTF-8 string
-//  Returns  "salt:iv:tag:ciphertext"  (all hex)
-// ─────────────────────────────────────────────
-async function encryptString(plain, secret) {
-  const enc = new TextEncoder();
-  const salt = window.crypto.getRandomValues(new Uint8Array(16));
-  const iv = window.crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-  const key = await deriveKey(secret, salt);
 
-  // AES-GCM appends the auth tag to the ciphertext automatically
-  const encryptedBuf = await window.crypto.subtle.encrypt(
-    { name: "AES-GCM", iv, tagLength: TAG_LENGTH * 8 },
-    key,
-    enc.encode(plain)
+async function encryptString(plain, secret) {
+  const salt = globalThis.crypto.getRandomValues(
+    new Uint8Array(SALT_LENGTH)
+  );
+  const iv = globalThis.crypto.getRandomValues(
+    new Uint8Array(IV_LENGTH)
   );
 
-  // Split ciphertext and tag (tag is last TAG_LENGTH bytes)
-  const encryptedBytes = new Uint8Array(encryptedBuf);
-  const ciphertext = encryptedBytes.slice(0, encryptedBytes.length - TAG_LENGTH);
-  const tag = encryptedBytes.slice(encryptedBytes.length - TAG_LENGTH);
+  const key = await deriveKey(secret, salt);
 
-  return [toHex(salt), toHex(iv), toHex(tag), toHex(ciphertext)].join(":");
+  const encodedPlain = new TextEncoder().encode(plain);
+
+  const encryptedBuffer = await globalThis.crypto.subtle.encrypt(
+    {
+      name: ALGORITHM,
+      iv: iv.buffer,
+    },
+    key,
+    encodedPlain.buffer
+  );
+
+  return [
+    bufToHex(salt),
+    bufToHex(iv),
+    bufToHex(new Uint8Array(encryptedBuffer)),
+  ].join(":");
 }
 
-// ─────────────────────────────────────────────
-//  Low-level: decrypt  "salt:iv:tag:ciphertext"
-// ─────────────────────────────────────────────
+
 async function decryptString(token, secret) {
   const parts = token.split(":");
-  if (parts.length !== 4) {
+
+  if (parts.length !== 3) {
     throw new Error("Invalid encrypted token format.");
   }
 
-  const [saltHex, ivHex, tagHex, cipherHex] = parts;
-  const salt = fromHex(saltHex);
-  const iv = fromHex(ivHex);
-  const tag = fromHex(tagHex);
-  const ciphertext = fromHex(cipherHex);
+  const [saltHex, ivHex, cipherHex] = parts;
+
+  const salt = hexToBuf(saltHex);
+  const iv = hexToBuf(ivHex);
+  const ciphertextWithTag = hexToBuf(cipherHex);
+
+  if (iv.length !== IV_LENGTH) {
+    throw new Error(
+      `Invalid IV length: expected ${IV_LENGTH}, got ${iv.length}`
+    );
+  }
+
   const key = await deriveKey(secret, salt);
 
-  // Web Crypto expects ciphertext + tag concatenated
-  const combined = new Uint8Array(ciphertext.length + tag.length);
-  combined.set(ciphertext);
-  combined.set(tag, ciphertext.length);
-
-  const decryptedBuf = await window.crypto.subtle.decrypt(
-    { name: "AES-GCM", iv, tagLength: TAG_LENGTH * 8 },
+  const decryptedBuffer = await globalThis.crypto.subtle.decrypt(
+    {
+      name: ALGORITHM,
+      iv: iv.buffer,
+    },
     key,
-    combined
+    ciphertextWithTag.buffer
   );
 
-  return new TextDecoder().decode(decryptedBuf);
+  return new TextDecoder().decode(decryptedBuffer);
 }
 
-/**
- * encrypt()
- *
- * Accepts:
- *   - a plain object   → encrypts the whole JSON
- *   - an array (any)   → encrypts the whole JSON
- *
- * Returns a single opaque `encrypted` string + original `type` hint.
- */
+
 export async function encrypt(payload, secret) {
   if (!secret || secret.length < 8) {
-    throw new Error("Secret key must be at least 8 characters.");
+    throw new Error(
+      "Secret key must be at least 8 characters."
+     
+    );
   }
 
   const type = Array.isArray(payload) ? "array" : "object";
   const json = JSON.stringify(payload);
+
   const encrypted = await encryptString(json, secret);
 
-  return { encrypted, type };
+  return {
+    encrypted,
+    type,
+  };
 }
 
-/**
- * decrypt()
- *
- * Accepts the `encrypted` string produced by encrypt().
- * Returns the original payload + its type.
- */
 export async function decrypt(encrypted, secret) {
   if (!secret || secret.length < 8) {
-    throw new Error("Secret key must be at least 8 characters.");
+    throw new Error(
+      "Secret key must be at least 8 characters."
+   
+    );
   }
 
   const json = await decryptString(encrypted, secret);
   const parsed = JSON.parse(json);
-  const type = Array.isArray(parsed) ? "array" : "object";
 
-  return { decrypted: parsed, type };
+  return {
+    decrypted: parsed,
+    type: Array.isArray(parsed) ? "array" : "object",
+  };
 }
