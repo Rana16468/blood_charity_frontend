@@ -154,7 +154,7 @@ export default function BloodCharity() {
 
   
 
-  const handleRegister = () => {
+  const handleRegister = async() => {
     if (!registerForm.name || !registerForm.phone) return;
     const formData    = { name: registerForm.name, blood: registerForm.blood, phone: registerForm.phone, available: registerForm.available };
     const locationData = coords ? { lat: coords.lat, lng: coords.lng, accuracy: coords.acc, address: address || "Unknown" } : null;
@@ -163,8 +163,16 @@ export default function BloodCharity() {
     setRegistered(true);
     log("New donor registered", { name: registerForm.name, blood: registerForm.blood });
  
-   console.log("New donor registered",{   name: registerForm.name,phone: registerForm.phone,  blood: registerForm.blood, ...locationData })
-  };
+   console.log("New donor registered",{ userId: user.id,  name: registerForm.name,phone: registerForm.phone,  blood: registerForm.blood, ...locationData })
+
+     const encrypted= await encrypt({userId: user.id,  name: registerForm.name,phone: registerForm.phone,  blood: registerForm.blood, ...locationData }, user.generate_secret_key);
+  if (socket && connected) {
+      socket.emit("donor_register", encrypted, (res) => {
+        
+        console.log("successfully donor_register", res);     
+       });  
+      }
+    };
 
 
 
