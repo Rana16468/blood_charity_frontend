@@ -168,6 +168,11 @@ export default function BloodCharity() {
      const encrypted= await encrypt({userId: user.id,  name: registerForm.name,phone: registerForm.phone,  blood: registerForm.blood, ...locationData }, user.generate_secret_key);
   if (socket && connected) {
       socket.emit("donor_register", encrypted, (res) => {
+
+         if (!res.success) {
+      
+         console.log("error blood request")
+        }
         
         console.log("successfully donor_register", res);     
        });  
