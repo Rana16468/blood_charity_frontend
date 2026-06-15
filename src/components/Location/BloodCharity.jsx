@@ -6,6 +6,7 @@ import { encrypt } from "../../utils/CeyptoSecurity";
 import { useSocketContext } from "../../router/SocketProvider";
 import { AppHeader } from "./AppHeader";
 import { BLOOD_STATS, BLOOD_TYPES, COMPATIBILITY, cs, formatAge, generateId, haversineKm, MOCK_DONORS, PermissionDenied, URGENCY_COLORS } from "./BloodCharityCommon";
+import { useFindMyNearestBloodRequestQuery } from "../redux/api/BloodRequstApi/BloodRequstApi";
 
 
 
@@ -35,7 +36,15 @@ export default function BloodCharity() {
   const ageRef     = useRef(null);
 
     const { socket, connected } = useSocketContext();
+
+    console.log({selectedBlood,searchRadius, coords})
+
+    const {data, isLoading, isError, error, isSuccess}=useFindMyNearestBloodRequestQuery({selectedBlood,searchRadius, coords})
    
+
+    console.log({data, isLoading, isError, error, isSuccess});
+
+
     useEffect(()=>{
 
        if (!socket || !connected) return;
@@ -45,6 +54,8 @@ export default function BloodCharity() {
 
     },[socket, connected])
 
+  
+  
   
 
 
@@ -151,6 +162,8 @@ export default function BloodCharity() {
   }
 
   const user=decodedToken(token);
+
+
 
   
 
