@@ -8,7 +8,7 @@ import { AppHeader } from "./AppHeader";
 import { BLOOD_STATS, BLOOD_TYPES, COMPATIBILITY, cs, formatAge, generateId, haversineKm, MOCK_DONORS, PermissionDenied, URGENCY_COLORS } from "./BloodCharityCommon";
 import { useFindMyNearestBloodRequestQuery } from "../redux/api/BloodRequstApi/BloodRequstApi";
 
-
+// ─── Setup checklist shown when find tab isn't ready ───────────────────────
 function FindSetupGuide({ coords, selectedBlood, searchRadius, onStartTracking }) {
   const steps = [
     {
