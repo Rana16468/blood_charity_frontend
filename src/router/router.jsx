@@ -4,6 +4,7 @@ import BloodCharity from "../components/Location/BloodCharity";
 import Location from "../components/Location/Location";
 import Login from "../components/Login/Login";
 import MyProfile from "../components/pages/MyProfile";
+import PrivateRoute from "./PrivateRoute";
 
 
 
@@ -14,7 +15,9 @@ const router = createBrowserRouter([
     children: [
       {
         path: "/",
-        element: <BloodCharity/>,
+        element: <PrivateRoute>
+          <BloodCharity/>,
+        </PrivateRoute>   
       },
       {
         path:"/donate_blood",
