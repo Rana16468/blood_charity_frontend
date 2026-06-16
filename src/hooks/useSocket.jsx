@@ -34,10 +34,9 @@ export const useSocket = () => {
     });
 
     socketInstance.on("connected", (data) => {
-      console.log("📨", data);
 
       if (data.type === "authenticated") {
-        console.log("🟢 Logged in user:", data.userId);
+        // console.log("🟢 Logged in user:", data.userId);
 
         const user = decodedToken(token);
         if (user?.role) {

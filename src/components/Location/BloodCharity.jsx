@@ -2,225 +2,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
 
 import { getFromLocalStorage } from "../../utils/LocalStore/LocalStore";
 import { decodedToken } from "../../utils/jwt";
-import { encrypt } from "../../utils/CeyptoSecurity";
+import { decrypt, encrypt } from "../../utils/CeyptoSecurity";
 import { useSocketContext } from "../../router/SocketProvider";
 import { AppHeader } from "./AppHeader";
 import { BLOOD_STATS, BLOOD_TYPES, COMPATIBILITY, cs, formatAge, generateId, haversineKm, MOCK_DONORS, PermissionDenied, URGENCY_COLORS } from "./BloodCharityCommon";
 import { useFindMyNearestBloodRequestQuery } from "../redux/api/BloodRequstApi/BloodRequstApi";
+import { FindSetupGuide } from "./FindSetupGuide";
 
-// ─── Setup checklist shown when find tab isn't ready ───────────────────────
-function FindSetupGuide({ coords, selectedBlood, searchRadius, onStartTracking }) {
-  const steps = [
-    {
-      id: "location",
-      done: !!coords,
-      icon: "📍",
-      title: "Enable your location",
-      desc: coords
-        ? `Connected · ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`
-        : "Required to find donors and requests near you",
-      action: !coords ? (
-        <button
-          onClick={onStartTracking}
-          style={{
-            marginTop: 8,
-            padding: "7px 16px",
-            background: "#c0392b",
-            color: "#fff",
-            border: "none",
-            borderRadius: 7,
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
-        >
-          📍 Enable Location
-        </button>
-      ) : null,
-    },
-    {
-      id: "blood",
-      done: !!selectedBlood,
-      icon: "🩸",
-      title: "Select a blood type",
-      desc: selectedBlood
-        ? `Filtering for ${selectedBlood}`
-        : "Optional — leave blank to see all types",
-      optional: true,
-    },
-    {
-      id: "radius",
-      done: searchRadius > 0,
-      icon: "🔭",
-      title: "Set search radius",
-      desc: searchRadius > 0
-        ? `Searching within ${searchRadius} km`
-        : "Use the radius slider to define your search area",
-      optional: true,
-    },
-  ];
 
-  const requiredDone = steps.filter(s => !s.optional).every(s => s.done);
-
-  return (
-    <div
-      style={{
-        background: "#fff",
-        border: "1px solid #f5c6c6",
-        borderRadius: 12,
-        padding: "20px 18px",
-        marginBottom: 14,
-        boxShadow: "0 2px 12px rgba(192,57,43,0.07)",
-      }}
-    >
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            background: "rgba(192,57,43,0.1)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 18,
-            flexShrink: 0,
-          }}
-        >
-          🔍
-        </div>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 15, color: "#2c3e50" }}>
-            Set up to find donors
-          </div>
-          <div style={{ fontSize: 12, color: "#95a5a6", marginTop: 2 }}>
-            {requiredDone
-              ? "Optional steps below improve your results"
-              : "Complete the required step to start searching"}
-          </div>
-        </div>
-      </div>
-
-      {/* Steps */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {steps.map((step, idx) => (
-          <div
-            key={step.id}
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 12,
-              padding: "12px 14px",
-              borderRadius: 9,
-              border: step.done
-                ? "1px solid #a9dfbf"
-                : step.optional
-                ? "1px dashed #f5c6c6"
-                : "1px solid #f5a0a0",
-              background: step.done
-                ? "#f0fff4"
-                : step.optional
-                ? "#fffafA"
-                : "#fff9f9",
-              transition: "all 0.2s",
-            }}
-          >
-            {/* Step number / checkmark */}
-            <div
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: "50%",
-                flexShrink: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 13,
-                fontWeight: 700,
-                background: step.done
-                  ? "#27ae60"
-                  : step.optional
-                  ? "#f5c6c6"
-                  : "#c0392b",
-                color: "#fff",
-                marginTop: 1,
-              }}
-            >
-              {step.done ? "✓" : idx + 1}
-            </div>
-
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 14 }}>{step.icon}</span>
-                <span
-                  style={{
-                    fontWeight: 600,
-                    fontSize: 13,
-                    color: step.done ? "#27ae60" : "#2c3e50",
-                  }}
-                >
-                  {step.title}
-                </span>
-                {step.optional && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      background: "rgba(149,165,166,0.15)",
-                      color: "#95a5a6",
-                      borderRadius: 99,
-                      padding: "1px 7px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Optional
-                  </span>
-                )}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: step.done ? "#27ae60" : "#7f8c8d",
-                  marginTop: 3,
-                  lineHeight: 1.5,
-                }}
-              >
-                {step.desc}
-              </div>
-              {step.action}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Bottom hint */}
-      {!requiredDone && (
-        <div
-          style={{
-            marginTop: 14,
-            padding: "10px 14px",
-            background: "rgba(192,57,43,0.06)",
-            borderRadius: 8,
-            fontSize: 12,
-            color: "#c0392b",
-            lineHeight: 1.6,
-            display: "flex",
-            gap: 8,
-            alignItems: "flex-start",
-          }}
-        >
-          <span style={{ flexShrink: 0 }}>⚠️</span>
-          <span>
-            Location access is required to calculate distances and show nearby
-            blood requests. Tap <strong>Enable Location</strong> above to
-            continue.
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function BloodCharity() {
   const [coords, setCoords]                 = useState(null);
@@ -245,13 +34,20 @@ export default function BloodCharity() {
   const [formLogs, setFormLogs]             = useState([]);
   const [currentPage, setCurrentPage]       = useState(1);
 
+  // ─── Decrypted blood request state ─────────────────────────────────────
+  const [bloodRequestList, setBloodRequestList] = useState([]);
+  const [decryptedMeta, setDecryptedMeta]       = useState(null);
+  const [isDecrypting, setIsDecrypting]         = useState(false);
+  const [decryptError, setDecryptError]         = useState(null);
+
   const watchIdRef = useRef(null);
   const ageRef     = useRef(null);
 
   const { socket, connected } = useSocketContext();
 
-  // ─── Only run the query when we have coords (location is required) ──────
   const isReadyToSearch = !!coords;
+
+  
 
   const { data, isLoading, isError, error, isSuccess } = useFindMyNearestBloodRequestQuery(
     {
@@ -261,10 +57,61 @@ export default function BloodCharity() {
       page: currentPage,
     },
     {
-      // Skip the API call entirely until the user has shared their location
       skip: !isReadyToSearch,
     }
   );
+
+  const token = getFromLocalStorage(import.meta.env.VITE_TOKEN_NAME);
+  
+
+  const user = decodedToken(token);
+  useEffect(() => {
+    if (!isSuccess || !data) return;
+      if (!token) return null;
+
+    const encryptedPayload = data?.data?.encrypted;
+    const plainList        = data?.data?.data;
+    const plainMeta        = data?.data?.meta;
+
+    if (encryptedPayload) {
+      setIsDecrypting(true);
+      setDecryptError(null);
+
+      decrypt(encryptedPayload, user.generate_secret_key)
+        .then((result) => {
+          const decrypted = result?.decrypted;
+          if (decrypted) {
+            setBloodRequestList(decrypted?.data ?? []);
+            setDecryptedMeta(decrypted?.meta ?? null);
+          } else {
+            if (Array.isArray(decrypted)) {
+              setBloodRequestList(decrypted);
+            } else {
+              setBloodRequestList([]);
+            }
+            setDecryptedMeta(null);
+          }
+        })
+        .catch((err) => {
+          console.error("[BloodCharity] Decryption failed:", err);
+          setDecryptError("Failed to decrypt response. Please try again.");
+          setBloodRequestList([]);
+          setDecryptedMeta(null);
+        })
+        .finally(() => setIsDecrypting(false));
+    } else if (plainList) {
+      setBloodRequestList(plainList);
+      setDecryptedMeta(plainMeta ?? null);
+      setIsDecrypting(false);
+      setDecryptError(null);
+    }
+  }, [isSuccess, data, user?.generate_secret_key, token]);
+
+  
+  useEffect(() => {
+    setBloodRequestList([]);
+    setDecryptedMeta(null);
+  }, [selectedBlood, searchRadius, currentPage, coords]);
 
   useEffect(() => {
     if (!socket || !connected) return;
@@ -360,11 +207,6 @@ export default function BloodCharity() {
     });
   };
 
-  const token = getFromLocalStorage(import.meta.env.VITE_TOKEN_NAME);
-  if (!token) return null;
-
-  const user = decodedToken(token);
-
   const handleRegister = async () => {
     if (!registerForm.name || !registerForm.phone) return;
     const formData    = { name: registerForm.name, blood: registerForm.blood, phone: registerForm.phone, available: registerForm.available };
@@ -401,7 +243,8 @@ export default function BloodCharity() {
     }
   };
 
-  const meta = data?.data?.meta;
+  const meta = decryptedMeta ?? data?.data?.meta;
+
   const TABS = [
     { id: "find",     icon: "🩸", label: "Find Donors" },
     { id: "requests", icon: "🚨", label: "Requests"    },
@@ -409,6 +252,9 @@ export default function BloodCharity() {
     { id: "map",      icon: "📍", label: "My Location" },
     { id: "debug",    icon: "🖥",  label: "Console"     },
   ];
+
+  // Combined loading: RTK loading OR still decrypting
+  const isBusy = isLoading || isDecrypting;
 
   return (
     <div style={{ minHeight: "100vh", background: "#fdf4f4", color: "#2c3e50", fontFamily: "'Crimson Pro', Georgia, serif", fontSize: 15 }}>
@@ -454,8 +300,10 @@ export default function BloodCharity() {
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <span style={{ fontSize: 11, color: "#95a5a6" }}>Donors nearby</span>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "#c0392b" }}>{data?.data?.data?.length ?? "—"}</div>
+              <span style={{ fontSize: 11, color: "#95a5a6" }}>Requests nearby</span>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#c0392b" }}>
+                {meta?.total ?? bloodRequestList.length ?? "—"}
+              </div>
             </div>
           </div>
         )}
@@ -481,7 +329,6 @@ export default function BloodCharity() {
           ))}
         </div>
 
-        {/* ══════════════════ FIND DONORS ══════════════════ */}
         {activeTab === "find" && (
           <div>
             {/* ── Setup guide shown when location is not yet active ── */}
@@ -494,7 +341,7 @@ export default function BloodCharity() {
               />
             ) : (
               <>
-                {/* Filters card — only shown once location is ready */}
+                {/* Filters card */}
                 <div style={{ ...cs.card, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div style={{ flex: 1, minWidth: 120 }}>
                     <label style={cs.label}>Blood Type Filter</label>
@@ -536,27 +383,30 @@ export default function BloodCharity() {
                   {filteredDonors.length} donor{filteredDonors.length !== 1 ? "s" : ""} found
                 </div>
 
-                {/* ── API Blood Requests Section ── */}
-
-                {/* Loading state */}
-                {isLoading && (
+                {isBusy && (
                   <div style={{ ...cs.card, textAlign: "center", padding: "36px 20px" }}>
                     <div style={{ fontSize: 28, marginBottom: 10, display: "inline-block", animation: "spin 1.2s linear infinite" }}>🩸</div>
-                    <div style={{ color: "#7f8c8d", fontSize: 13 }}>Searching nearby blood requests…</div>
+                    <div style={{ color: "#7f8c8d", fontSize: 13 }}>
+                      {isLoading ? "Searching nearby blood requests…" : "Decrypting response…"}
+                    </div>
                   </div>
                 )}
 
-                {/* Error state */}
-                {isError && (
+                {/* Error state (API or decryption) */}
+                {!isBusy && (isError || decryptError) && (
                   <div style={{ ...cs.card, background: "#fff5f5", border: "1px solid #f5c6c6", textAlign: "center", padding: "28px 20px" }}>
                     <div style={{ fontSize: 26, marginBottom: 8 }}>⚠️</div>
-                    <div style={{ color: "#c0392b", fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Failed to load requests</div>
-                    <div style={{ color: "#7f8c8d", fontSize: 12 }}>{error?.message || "Please check your connection and try again."}</div>
+                    <div style={{ color: "#c0392b", fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+                      {decryptError ? "Decryption error" : "Failed to load requests"}
+                    </div>
+                    <div style={{ color: "#7f8c8d", fontSize: 12 }}>
+                      {decryptError || error?.message || "Please check your connection and try again."}
+                    </div>
                   </div>
                 )}
 
                 {/* Success with data */}
-                {!isLoading && isSuccess && data?.data?.data?.length > 0 && (
+                {!isBusy && !isError && !decryptError && bloodRequestList.length > 0 && (
                   <>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingLeft: 2 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -565,16 +415,18 @@ export default function BloodCharity() {
                           fontSize: 11, background: "#c0392b", color: "#fff",
                           borderRadius: 99, padding: "2px 9px", fontWeight: 700,
                         }}>
-                          {meta?.total || data.data.data.length}
+                          {meta?.total ?? bloodRequestList.length}
                         </span>
                       </div>
-                      <div style={{ fontSize: 11, color: "#95a5a6" }}>
-                        Page {meta?.page} of {meta?.totalPages}
-                      </div>
+                      {meta && (
+                        <div style={{ fontSize: 11, color: "#95a5a6" }}>
+                          Page {meta.page} of {meta.totalPages}
+                        </div>
+                      )}
                     </div>
 
                     {/* Request cards */}
-                    {data?.data?.data.map((bloodRequest) => (
+                    {bloodRequestList.map((bloodRequest) => (
                       <div
                         key={bloodRequest._id}
                         className="request-card"
@@ -625,24 +477,26 @@ export default function BloodCharity() {
                           </div>
 
                           {/* Distance */}
-                          <div style={{ textAlign: "center", flexShrink: 0, marginLeft: 10 }}>
-                            <div style={{
-                              fontSize: 14, fontWeight: 700,
-                              color: bloodRequest.distance < 2 ? "#c0392b" : bloodRequest.distance < 10 ? "#e67e22" : "#7f8c8d",
-                              background: bloodRequest.distance < 2
-                                ? "rgba(192,57,43,0.08)"
-                                : bloodRequest.distance < 10
-                                  ? "rgba(230,126,34,0.08)"
-                                  : "#f7f7f7",
-                              border: `1px solid ${bloodRequest.distance < 2 ? "rgba(192,57,43,0.2)" : bloodRequest.distance < 10 ? "rgba(230,126,34,0.2)" : "#ececec"}`,
-                              borderRadius: 8, padding: "4px 11px", lineHeight: 1.3,
-                            }}>
-                              {bloodRequest.distance < 1
-                                ? `${(bloodRequest.distance * 1000).toFixed(0)}m`
-                                : `${bloodRequest.distance.toFixed(1)}km`}
+                          {bloodRequest.distance !== undefined && (
+                            <div style={{ textAlign: "center", flexShrink: 0, marginLeft: 10 }}>
+                              <div style={{
+                                fontSize: 14, fontWeight: 700,
+                                color: bloodRequest.distance < 2 ? "#c0392b" : bloodRequest.distance < 10 ? "#e67e22" : "#7f8c8d",
+                                background: bloodRequest.distance < 2
+                                  ? "rgba(192,57,43,0.08)"
+                                  : bloodRequest.distance < 10
+                                    ? "rgba(230,126,34,0.08)"
+                                    : "#f7f7f7",
+                                border: `1px solid ${bloodRequest.distance < 2 ? "rgba(192,57,43,0.2)" : bloodRequest.distance < 10 ? "rgba(230,126,34,0.2)" : "#ececec"}`,
+                                borderRadius: 8, padding: "4px 11px", lineHeight: 1.3,
+                              }}>
+                                {bloodRequest.distance < 1
+                                  ? `${(bloodRequest.distance * 1000).toFixed(0)}m`
+                                  : `${bloodRequest.distance.toFixed(1)}km`}
+                              </div>
+                              <div style={{ fontSize: 10, color: "#bdc3c7", marginTop: 3 }}>away</div>
                             </div>
-                            <div style={{ fontSize: 10, color: "#bdc3c7", marginTop: 3 }}>away</div>
-                          </div>
+                          )}
                         </div>
 
                         {/* Hospital */}
@@ -651,32 +505,36 @@ export default function BloodCharity() {
                           <span style={{ fontSize: 14, fontWeight: 600, color: "#2c3e50" }}>{bloodRequest.hospital}</span>
                         </div>
 
-                        {/* Address */}
-                        <div style={{
-                          fontSize: 11, color: "#7f8c8d", marginBottom: 10,
-                          background: "#fafafa", borderRadius: 7, padding: "6px 10px",
-                          border: "1px solid #f0f0f0", lineHeight: 1.6, display: "flex", gap: 6,
-                        }}>
-                          <span style={{ flexShrink: 0 }}>📍</span>
-                          <span>{bloodRequest.locationData.address}</span>
-                        </div>
+                        {/* Address — safe guard if locationData exists */}
+                        {bloodRequest.locationData?.address && (
+                          <div style={{
+                            fontSize: 11, color: "#7f8c8d", marginBottom: 10,
+                            background: "#fafafa", borderRadius: 7, padding: "6px 10px",
+                            border: "1px solid #f0f0f0", lineHeight: 1.6, display: "flex", gap: 6,
+                          }}>
+                            <span style={{ flexShrink: 0 }}>📍</span>
+                            <span>{bloodRequest.locationData.address}</span>
+                          </div>
+                        )}
 
-                        {/* Coords row */}
-                        <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-                          {[
-                            ["Lat", bloodRequest.locationData.lat.toFixed(5)],
-                            ["Lng", bloodRequest.locationData.lng.toFixed(5)],
-                            ["±", `${bloodRequest.locationData.accuracy}m`],
-                          ].map(([label, val]) => (
-                            <div key={label} style={{
-                              fontSize: 11, fontFamily: "monospace", color: "#c0392b",
-                              background: "#fff5f5", border: "1px solid #f5c6c6",
-                              borderRadius: 6, padding: "3px 9px",
-                            }}>
-                              <span style={{ color: "#95a5a6", fontFamily: "inherit" }}>{label}: </span>{val}
-                            </div>
-                          ))}
-                        </div>
+                        {/* Coords row — safe guard if locationData exists */}
+                        {bloodRequest.locationData && (
+                          <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+                            {[
+                              ["Lat", bloodRequest.locationData.lat?.toFixed(5)],
+                              ["Lng", bloodRequest.locationData.lng?.toFixed(5)],
+                              ["±",   `${bloodRequest.locationData.accuracy}m`],
+                            ].filter(([, val]) => val !== undefined).map(([label, val]) => (
+                              <div key={label} style={{
+                                fontSize: 11, fontFamily: "monospace", color: "#c0392b",
+                                background: "#fff5f5", border: "1px solid #f5c6c6",
+                                borderRadius: 6, padding: "3px 9px",
+                              }}>
+                                <span style={{ color: "#95a5a6", fontFamily: "inherit" }}>{label}: </span>{val}
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
                         {/* Action buttons */}
                         <div style={{ display: "flex", gap: 8 }}>
@@ -698,7 +556,7 @@ export default function BloodCharity() {
                           >
                             {copiedPhone === bloodRequest.phone ? "✓ Copied!" : "📋 Copy"}
                           </button>
-                          {coords && (
+                          {coords && bloodRequest.locationData && (
                             <a
                               href={`https://www.google.com/maps/dir/${coords.lat},${coords.lng}/${bloodRequest.locationData.lat},${bloodRequest.locationData.lng}`}
                               target="_blank" rel="noopener noreferrer"
@@ -716,7 +574,7 @@ export default function BloodCharity() {
                     ))}
 
                     {/* Pagination */}
-                    {meta && meta.totalPages > 0 && (
+                    {meta && meta.totalPages > 1 && (
                       <div style={{
                         display: "flex", alignItems: "center", justifyContent: "space-between",
                         padding: "12px 16px",
@@ -778,7 +636,7 @@ export default function BloodCharity() {
                       marginTop: 6, marginBottom: 8, padding: "6px 0",
                       borderTop: "1px dashed #f5c6c6",
                     }}>
-                      Showing {data.data.data.length} of {meta?.total || data.data.data.length} request{(meta?.total || 1) !== 1 ? "s" : ""}
+                      Showing {bloodRequestList.length} of {meta?.total ?? bloodRequestList.length} request{(meta?.total ?? 1) !== 1 ? "s" : ""}
                       {meta ? ` · Page ${meta.page} of ${meta.totalPages}` : ""}
                       {meta?.cachedUntil
                         ? ` · Cached until ${new Date(meta.cachedUntil).toLocaleTimeString()}`
@@ -787,8 +645,8 @@ export default function BloodCharity() {
                   </>
                 )}
 
-                {/* Empty state from API */}
-                {!isLoading && isSuccess && data?.data?.data?.length === 0 && (
+                {/* Empty state */}
+                {!isBusy && !isError && !decryptError && bloodRequestList.length === 0 && isSuccess && (
                   <div style={{ ...cs.card, textAlign: "center", padding: "44px 20px", marginTop: 8 }}>
                     <div style={{ fontSize: 30, marginBottom: 10 }}>🔍</div>
                     <div style={{ color: "#7f8c8d", fontSize: 14, marginBottom: 4 }}>No blood requests found nearby</div>
@@ -1075,13 +933,16 @@ export default function BloodCharity() {
                 <div style={{ color: "#f39c12" }}>isTracking: <span style={{ color: "#2ecc71" }}>{String(isTracking)}</span></div>
                 <div style={{ color: "#f39c12" }}>permState: <span style={{ color: "#2ecc71" }}>{permState}</span></div>
                 <div style={{ color: "#f39c12" }}>isReadyToSearch: <span style={{ color: isReadyToSearch ? "#2ecc71" : "#e74c3c" }}>{String(isReadyToSearch)}</span></div>
+                <div style={{ color: "#f39c12" }}>isDecrypting: <span style={{ color: "#2ecc71" }}>{String(isDecrypting)}</span></div>
+                <div style={{ color: "#f39c12" }}>decryptError: <span style={{ color: decryptError ? "#e74c3c" : "#2ecc71" }}>{decryptError || "null"}</span></div>
                 <div style={{ color: "#f39c12" }}>address: <span style={{ color: "#2ecc71" }}>{address || "null"}</span></div>
                 <div style={{ color: "#f39c12" }}>donors.length: <span style={{ color: "#2ecc71" }}>{donors.length}</span></div>
                 <div style={{ color: "#f39c12" }}>requests.length: <span style={{ color: "#2ecc71" }}>{requests.length}</span></div>
                 <div style={{ color: "#f39c12" }}>currentPage: <span style={{ color: "#2ecc71" }}>{currentPage}</span></div>
                 <div style={{ color: "#f39c12" }}>filteredDonors: <span style={{ color: "#2ecc71" }}>{filteredDonors.length} (radius: {searchRadius}km, filter: {selectedBlood || "all"})</span></div>
-                <div style={{ color: "#f39c12" }}>api.total: <span style={{ color: "#2ecc71" }}>{meta?.total ?? "—"}</span></div>
-                <div style={{ color: "#f39c12" }}>api.page: <span style={{ color: "#2ecc71" }}>{meta ? `${meta.page} / ${meta.totalPages}` : "—"}</span></div>
+                <div style={{ color: "#f39c12" }}>bloodRequestList.length: <span style={{ color: "#2ecc71" }}>{bloodRequestList.length}</span></div>
+                <div style={{ color: "#f39c12" }}>meta.total: <span style={{ color: "#2ecc71" }}>{meta?.total ?? "—"}</span></div>
+                <div style={{ color: "#f39c12" }}>meta.page: <span style={{ color: "#2ecc71" }}>{meta ? `${meta.page} / ${meta.totalPages}` : "—"}</span></div>
                 {coords && (
                   <div style={{ color: "#f39c12" }}>nearestDonor: <span style={{ color: "#2ecc71" }}>{donorsWithDist[0] ? `${donorsWithDist[0].name} (${donorsWithDist[0].dist?.toFixed(2)}km, ${donorsWithDist[0].blood})` : "none"}</span></div>
                 )}
