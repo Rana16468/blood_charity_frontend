@@ -75,6 +75,8 @@ export default function BloodCharity() {
     setFormLogs(prev => [entry, ...prev].slice(0, 20));
   }, []);
 
+
+
   const reverseGeocode = useCallback((lat, lng) => {
     setAddressLoading(true);
     log("Reverse geocoding", { lat, lng });
@@ -625,56 +627,9 @@ export default function BloodCharity() {
               {requestsWithDist.length} active request{requestsWithDist.length !== 1 ? "s" : ""}
             </div>
 
-            {requestsWithDist.map(r => (
-              <div key={r.id} style={{ ...cs.card, borderLeft: `3px solid ${URGENCY_COLORS[r.urgency]}`, borderRadius: "0 10px 10px 0" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={cs.badge(r.blood)}>{r.blood}</span>
-                      <span style={{
-                        fontSize: 11, padding: "2px 8px", borderRadius: 99, fontWeight: 700, textTransform: "uppercase",
-                        background: r.urgency === "critical" ? "rgba(192,57,43,0.12)" : r.urgency === "urgent" ? "rgba(230,126,34,0.12)" : "rgba(39,174,96,0.12)",
-                        color: URGENCY_COLORS[r.urgency],
-                        border: `1px solid ${URGENCY_COLORS[r.urgency]}`,
-                        animation: r.urgency === "critical" ? "pulse 1.5s infinite" : "none",
-                      }}>
-                        {r.urgency === "critical" ? "🔴 " : r.urgency === "urgent" ? "🟠 " : "🟢 "}{r.urgency}
-                      </span>
-                    </div>
-                    <div style={{ fontWeight: 600, color: "#2c3e50", fontSize: 15 }}>{r.name}</div>
-                    <div style={{ fontSize: 13, color: "#7f8c8d", marginTop: 2 }}>🏥 {r.hospital}</div>
-                    <div style={{ fontSize: 12, color: "#c0392b", marginTop: 2, fontFamily: "monospace" }}>{r.contact}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    {r.dist !== null && (
-                      <div style={{ fontSize: 14, fontWeight: 600, color: r.dist < 2 ? "#c0392b" : "#e67e22" }}>
-                        {r.dist < 1 ? `${(r.dist * 1000).toFixed(0)}m` : `${r.dist.toFixed(1)}km`}
-                      </div>
-                    )}
-                    <div style={{ fontSize: 11, color: "#95a5a6", marginTop: 2 }}>{formatAge(r.createdAt)}</div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                  <a href={`tel:${r.contact}`} style={{ ...cs.btn("red"), flex: 1, fontSize: 12, textDecoration: "none", textAlign: "center" }}>
-                    📞 Call
-                  </a>
-                  <button onClick={() => copyPhone(r.contact)} style={{ ...cs.btn("ghost"), flex: 1, fontSize: 12 }}>
-                    {copiedPhone === r.contact ? "✓ Copied!" : "📋 Copy"}
-                  </button>
-                  {coords && (
-                    <a href={`https://www.google.com/maps/dir/${coords.lat},${coords.lng}/${r.lat},${r.lng}`}
-                      target="_blank" rel="noopener noreferrer"
-                      style={{ ...cs.btn("ghost"), flex: 1, fontSize: 12, textDecoration: "none", textAlign: "center" }}>
-                      🗺 Go
-                    </a>
-                  )}
-                </div>
-              </div>
-            ))}
           </div>
         )}
 
-        {/* ══════════════════ REGISTER ══════════════════ */}
         {activeTab === "register" && (
           <div>
             {registered ? (

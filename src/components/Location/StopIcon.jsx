@@ -9,10 +9,10 @@ function StopIcon() {
 export default StopIcon
 
 export const TABS = [
-    { id: "find",     icon: "🩸", label: "Find Donors" },
+    { id: "find",     icon: "🩸", label: "Donate Blood" },
     { id: "requests", icon: "🚨", label: "Requests"    },
     { id: "register", icon: "✚",  label: "Be a Donor"  },
-    { id: "map",      icon: "📍", label: "My Location" },
+    { id: "map",      icon: "📍", label: "Find Donar " },
     { id: "debug",    icon: "🖥",  label: "Console"     },
   ];
 
