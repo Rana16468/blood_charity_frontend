@@ -9,6 +9,7 @@ import { BLOOD_STATS, BLOOD_TYPES, COMPATIBILITY, cs, formatAge, generateId, hav
 import { useFindMyNearestBloodRequestQuery } from "../redux/api/BloodRequstApi/BloodRequstApi";
 import { FindSetupGuide } from "./FindSetupGuide";
 import { style, TABS } from "./StopIcon";
+import BloodFilterPanel from "./BloodFilterPanel";
 
 
 
@@ -715,6 +716,28 @@ export default function BloodCharity() {
         {/* ══════════════════ MY LOCATION ══════════════════ */}
         {activeTab === "map" && (
           <div>
+
+            <>
+  <BloodFilterPanel
+      selectedBlood={selectedBlood}
+      setSelectedBlood={setSelectedBlood}
+      searchRadius={searchRadius}
+      setSearchRadius={setSearchRadius}
+      setCurrentPage={setCurrentPage}
+      BLOOD_TYPES={BLOOD_TYPES}
+      COMPATIBILITY={COMPATIBILITY}
+      cs={cs}
+      coords={coords}
+    />
+</>
+
+
+
+              
+
+
+
+            
             {!coords ? (
               <div style={{ ...cs.card, textAlign: "center", padding: "52px 20px" }}>
                 <div style={{ fontSize: 32, marginBottom: 10 }}>📍</div>
