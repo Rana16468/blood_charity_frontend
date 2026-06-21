@@ -727,7 +727,7 @@ export default function BloodCharity() {
       COMPATIBILITY={COMPATIBILITY}
       cs={cs}
       coords={coords}
-      generate_secret_key={user.generate_secret_key}
+    
     />
 </>
 
