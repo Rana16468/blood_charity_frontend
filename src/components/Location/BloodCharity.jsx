@@ -42,7 +42,6 @@ export default function BloodCharity() {
 
   const { socket, connected } = useSocketContext();
 
-  // ─── Only run the query when we have coords (location is required) ──────
   const isReadyToSearch = !!coords;
 
   const { data, isLoading, isError, error, isSuccess } = useFindMyNearestBloodRequestQuery(
@@ -728,6 +727,7 @@ export default function BloodCharity() {
       COMPATIBILITY={COMPATIBILITY}
       cs={cs}
       coords={coords}
+      generate_secret_key={user.generate_secret_key}
     />
 </>
 
