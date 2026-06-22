@@ -1,15 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-import { getFromLocalStorage } from "../../utils/LocalStore/LocalStore";
+import { getFromLocalStorage, saveToLocalStorage } from "../../utils/LocalStore/LocalStore.jsx";
 import { decodedToken } from "../../utils/jwt";
 import { encrypt } from "../../utils/CeyptoSecurity";
 import { useSocketContext } from "../../router/SocketProvider";
 import { AppHeader } from "./AppHeader";
-import { BLOOD_STATS, BLOOD_TYPES, COMPATIBILITY, cs, formatAge, generateId, haversineKm, MOCK_DONORS, PermissionDenied, URGENCY_COLORS } from "./BloodCharityCommon";
+import {
+  BLOOD_STATS, BLOOD_TYPES, COMPATIBILITY, cs, formatAge,
+  generateId, haversineKm, MOCK_DONORS, PermissionDenied, URGENCY_COLORS,
+} from "./BloodCharityCommon";
 import { useFindMyNearestBloodRequestQuery } from "../redux/api/BloodRequstApi/BloodRequstApi";
 import { FindSetupGuide } from "./FindSetupGuide";
 import { style, TABS } from "./StopIcon";
 import BloodFilterPanel from "./BloodFilterPanel";
+// import { useNavigate } from "react-router-dom";
 
 
 
@@ -37,6 +41,14 @@ export default function BloodCharity() {
   const [formLogs, setFormLogs]             = useState([]);
   const [currentPage, setCurrentPage]       = useState(1);
 
+  // ── FIX 1: user as reactive state so isDonorRegister updates without reload ──
+  const [user, setUser] = useState(() => {
+    const token = getFromLocalStorage(import.meta.env.VITE_TOKEN_NAME);
+    return token ? decodedToken(token) : null;
+  });
+
+  // const navigate = useNavigate();
+
   const watchIdRef = useRef(null);
   const ageRef     = useRef(null);
 
@@ -56,13 +68,9 @@ export default function BloodCharity() {
     }
   );
 
-  
-
   useEffect(() => {
     if (!socket || !connected) return;
   }, [socket, connected]);
-
-
 
   const log = useCallback((msg, data) => {
     const entry = { ts: new Date().toISOString(), msg, data: data ? JSON.stringify(data) : undefined };
@@ -74,8 +82,6 @@ export default function BloodCharity() {
     console.log("[RaktoDaan][FORM SUBMIT]", type, { form: formData, location: locationData });
     setFormLogs(prev => [entry, ...prev].slice(0, 20));
   }, []);
-
-
 
   const reverseGeocode = useCallback((lat, lng) => {
     setAddressLoading(true);
@@ -135,10 +141,8 @@ export default function BloodCharity() {
     if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
   }, []);
 
-  const token = getFromLocalStorage(import.meta.env.VITE_TOKEN_NAME);
-  if (!token) return null;
-
-  const user = decodedToken(token);
+  // Guard: if no user in state, token was missing on mount
+  if (!user) return null;
 
   const donorsWithDist = donors
     .map(d => ({ ...d, dist: coords ? haversineKm(coords.lat, coords.lng, d.lat, d.lng) : null }))
@@ -161,39 +165,64 @@ export default function BloodCharity() {
     });
   };
 
-
-
   const handleRegister = async () => {
     if (!registerForm.name || !registerForm.phone) return;
-    const formData    = { name: registerForm.name, blood: registerForm.blood, phone: registerForm.phone, available: registerForm.available };
+    const formData     = { name: registerForm.name, blood: registerForm.blood, phone: registerForm.phone, available: registerForm.available };
     const locationData = coords ? { lat: coords.lat, lng: coords.lng, accuracy: coords.acc, address: address || "Unknown" } : null;
     logForm("DONOR_REGISTER", formData, locationData);
-    setDonors(prev => [{ id: generateId(), ...registerForm, lat: coords?.lat ?? 26.034, lng: coords?.lng ?? 88.469, lastDonated: "—" }, ...prev]);
+
+    setDonors(prev => [
+      { id: generateId(), ...registerForm, lat: coords?.lat ?? 26.034, lng: coords?.lng ?? 88.469, lastDonated: "—" },
+      ...prev,
+    ]);
     setRegistered(true);
     log("New donor registered", { name: registerForm.name, blood: registerForm.blood });
 
-    const encrypted = await encrypt({ userId: user.id, name: registerForm.name, phone: registerForm.phone, blood: registerForm.blood, ...locationData }, user.generate_secret_key);
+    const encrypted = await encrypt(
+      { userId: user.id, name: registerForm.name, phone: registerForm.phone, blood: registerForm.blood, ...locationData },
+      user.generate_secret_key
+    );
+
     if (socket && connected) {
       socket.emit("donor_register", encrypted, (res) => {
-        if (!res.success) console.log("error blood request");
-        console.log("successfully donor_register", res);
+        if (!res?.success) {
+          console.log("Error registering donor");
+          return;
+        }
+
+        // ── FIX 2: Update user state reactively instead of removing token ──
+        // If the server returns a refreshed token, save it and decode the new user.
+        if (res.token) {
+          saveToLocalStorage(import.meta.env.VITE_TOKEN_NAME, res.token);
+          setUser(decodedToken(res.token));
+        } else {
+          // Fallback: patch isDonorRegister locally so the UI reflects
+          // the change immediately without needing a page reload.
+          setUser(prev => ({ ...prev, isDonorRegister: true }));
+        }
       });
+    } else {
+      // Socket unavailable — still mark locally so the UI stays correct
+      setUser(prev => ({ ...prev, isDonorRegister: true }));
     }
   };
 
   const handleRequest = async () => {
     if (!reqForm.name || !reqForm.hospital || !reqForm.contact) return;
-    const formData    = { name: reqForm.name, blood: reqForm.blood, hospital: reqForm.hospital, urgency: reqForm.urgency, contact: reqForm.contact };
+    const formData     = { name: reqForm.name, blood: reqForm.blood, hospital: reqForm.hospital, urgency: reqForm.urgency, contact: reqForm.contact };
     const locationData = coords ? { lat: coords.lat, lng: coords.lng, accuracy: coords.acc, address: address || "Unknown" } : null;
     logForm("BLOOD_REQUEST", formData, locationData);
     setRequests(prev => [{ id: generateId(), ...reqForm, lat: coords?.lat ?? 26.034, lng: coords?.lng ?? 88.469, createdAt: Date.now() }, ...prev]);
     setReqForm({ name: "", blood: "O+", hospital: "", urgency: "normal", contact: "" });
     log("Blood request created", { blood: reqForm.blood, hospital: reqForm.hospital, urgency: reqForm.urgency, locationData });
 
-    const encrypted = await encrypt({ userId: user.id, blood: reqForm.blood, phone: reqForm.contact, hospital: reqForm.hospital, urgency: reqForm.urgency, locationData }, user.generate_secret_key);
+    const encrypted = await encrypt(
+      { userId: user.id, blood: reqForm.blood, phone: reqForm.contact, hospital: reqForm.hospital, urgency: reqForm.urgency, locationData },
+      user.generate_secret_key
+    );
     if (socket && connected) {
       socket.emit("blood_request", encrypted, (res) => {
-        if (!res.success) console.log("error blood request");
+        if (!res?.success) console.log("error blood request");
         console.log("successfully blood request recorded", res);
       });
     }
@@ -203,7 +232,7 @@ export default function BloodCharity() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#fdf4f4", color: "#2c3e50", fontFamily: "'Crimson Pro', Georgia, serif", fontSize: 15 }}>
-    {style}
+      {style}
 
       <AppHeader
         isTracking={isTracking}
@@ -309,9 +338,6 @@ export default function BloodCharity() {
                   {filteredDonors.length} donor{filteredDonors.length !== 1 ? "s" : ""} found
                 </div>
 
-          
-
-              
                 {isLoading && (
                   <div style={{ ...cs.card, textAlign: "center", padding: "36px 20px" }}>
                     <div style={{ fontSize: 28, marginBottom: 10, display: "inline-block", animation: "spin 1.2s linear infinite" }}>🩸</div>
@@ -319,7 +345,6 @@ export default function BloodCharity() {
                   </div>
                 )}
 
-                {/* Error state */}
                 {isError && (
                   <div style={{ ...cs.card, background: "#fff5f5", border: "1px solid #f5c6c6", textAlign: "center", padding: "28px 20px" }}>
                     <div style={{ fontSize: 26, marginBottom: 8 }}>⚠️</div>
@@ -328,16 +353,12 @@ export default function BloodCharity() {
                   </div>
                 )}
 
-                {/* Success with data */}
                 {!isLoading && isSuccess && data?.data?.data?.length > 0 && (
                   <>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingLeft: 2 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: "#c0392b" }}>🚨 Nearby Blood Requests</span>
-                        <span style={{
-                          fontSize: 11, background: "#c0392b", color: "#fff",
-                          borderRadius: 99, padding: "2px 9px", fontWeight: 700,
-                        }}>
+                        <span style={{ fontSize: 11, background: "#c0392b", color: "#fff", borderRadius: 99, padding: "2px 9px", fontWeight: 700 }}>
                           {meta?.total || data.data.data.length}
                         </span>
                       </div>
@@ -346,7 +367,6 @@ export default function BloodCharity() {
                       </div>
                     </div>
 
-                    {/* Request cards */}
                     {data?.data?.data.map((bloodRequest) => (
                       <div
                         key={bloodRequest._id}
@@ -359,18 +379,13 @@ export default function BloodCharity() {
                           transition: "all 0.18s ease",
                         }}
                       >
-                        {/* Top row */}
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                             <span style={cs.badge(bloodRequest.blood)}>{bloodRequest.blood}</span>
                             <span style={{
                               fontSize: 11, padding: "2px 9px", borderRadius: 99, fontWeight: 700,
                               textTransform: "uppercase",
-                              background: bloodRequest.urgency === "critical"
-                                ? "rgba(192,57,43,0.12)"
-                                : bloodRequest.urgency === "urgent"
-                                  ? "rgba(230,126,34,0.12)"
-                                  : "rgba(39,174,96,0.12)",
+                              background: bloodRequest.urgency === "critical" ? "rgba(192,57,43,0.12)" : bloodRequest.urgency === "urgent" ? "rgba(230,126,34,0.12)" : "rgba(39,174,96,0.12)",
                               color: URGENCY_COLORS[bloodRequest.urgency] || "#27ae60",
                               border: `1px solid ${URGENCY_COLORS[bloodRequest.urgency] || "#27ae60"}`,
                               animation: bloodRequest.urgency === "critical" ? "pulse 1.5s infinite" : "none",
@@ -378,11 +393,7 @@ export default function BloodCharity() {
                               {bloodRequest.urgency === "critical" ? "🔴 " : bloodRequest.urgency === "urgent" ? "🟠 " : "🟢 "}
                               {bloodRequest.urgency || "normal"}
                             </span>
-                            <span style={{
-                              fontSize: 11, padding: "2px 9px", borderRadius: 99, fontWeight: 600,
-                              background: "rgba(52,152,219,0.10)", color: "#2980b9",
-                              border: "1px solid rgba(52,152,219,0.25)",
-                            }}>
+                            <span style={{ fontSize: 11, padding: "2px 9px", borderRadius: 99, fontWeight: 600, background: "rgba(52,152,219,0.10)", color: "#2980b9", border: "1px solid rgba(52,152,219,0.25)" }}>
                               {bloodRequest.bloodResuestType === "request" ? "🏥 Request" : "🤝 Donor"}
                             </span>
                             {bloodRequest.isDonorFind !== undefined && (
@@ -397,16 +408,11 @@ export default function BloodCharity() {
                             )}
                           </div>
 
-                          {/* Distance */}
                           <div style={{ textAlign: "center", flexShrink: 0, marginLeft: 10 }}>
                             <div style={{
                               fontSize: 14, fontWeight: 700,
                               color: bloodRequest.distance < 2 ? "#c0392b" : bloodRequest.distance < 10 ? "#e67e22" : "#7f8c8d",
-                              background: bloodRequest.distance < 2
-                                ? "rgba(192,57,43,0.08)"
-                                : bloodRequest.distance < 10
-                                  ? "rgba(230,126,34,0.08)"
-                                  : "#f7f7f7",
+                              background: bloodRequest.distance < 2 ? "rgba(192,57,43,0.08)" : bloodRequest.distance < 10 ? "rgba(230,126,34,0.08)" : "#f7f7f7",
                               border: `1px solid ${bloodRequest.distance < 2 ? "rgba(192,57,43,0.2)" : bloodRequest.distance < 10 ? "rgba(230,126,34,0.2)" : "#ececec"}`,
                               borderRadius: 8, padding: "4px 11px", lineHeight: 1.3,
                             }}>
@@ -418,106 +424,49 @@ export default function BloodCharity() {
                           </div>
                         </div>
 
-                        {/* Hospital */}
                         <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7 }}>
                           <span style={{ fontSize: 15 }}>🏥</span>
                           <span style={{ fontSize: 14, fontWeight: 600, color: "#2c3e50" }}>{bloodRequest.hospital}</span>
                         </div>
 
-                        {/* Address */}
-                        <div
-  style={{
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    fontSize: 12,
-    color: "#374151",
-    background: "linear-gradient(145deg, #ffffff, #f3f4f6)",
-    borderRadius: 12,
-    padding: "12px 14px",
-    border: "1px solid #e5e7eb",
-    boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-    transition: "all 0.25s ease",
-  }}
->
-  {/* Left Side */}
-  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-    <span style={{ fontSize: 16 }}>📍</span>
-    <span
-      style={{
-        lineHeight: 1.4,
-        fontWeight: 500,
-      }}
-    >
-      {bloodRequest.locationData.address}
-    </span>
-  </div>
-
-  {/* Button */}
-  <button
-    onClick={() => {
-      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        bloodRequest.locationData.address
-      )}`;
-      window.open(url, "_blank");
-    }}
-    style={{
-      background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-      color: "#fff",
-      border: "none",
-      padding: "7px 12px",
-      borderRadius: 10,
-      fontSize: 12,
-      fontWeight: 500,
-      cursor: "pointer",
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      boxShadow: "0 2px 5px rgba(37, 99, 235, 0.25)",
-      transition: "all 0.2s ease",
-    }}
-    onMouseOver={(e) => {
-      e.currentTarget.style.transform = "translateY(-1px)";
-      e.currentTarget.style.boxShadow = "0 4px 10px rgba(37, 99, 235, 0.35)";
-    }}
-    onMouseOut={(e) => {
-      e.currentTarget.style.transform = "translateY(0)";
-      e.currentTarget.style.boxShadow = "0 2px 5px rgba(37, 99, 235, 0.25)";
-    }}
-  >
-    🗺️ Map
-  </button>
-</div>
-
-
-                        {/* Coords row */}
-                        <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-                          {[
-                            // ["Lat", bloodRequest.locationData.lat.toFixed(5)],
-                            // ["Lng", bloodRequest.locationData.lng.toFixed(5)],
-                            // ["±", `${bloodRequest.locationData.accuracy}m`],
-                          ].map(([label, val]) => (
-                            <div key={label} style={{
-                              fontSize: 11, fontFamily: "monospace", color: "#c0392b",
-                              background: "#fff5f5", border: "1px solid #f5c6c6",
-                              borderRadius: 6, padding: "3px 9px",
-                            }}>
-                              <span style={{ color: "#95a5a6", fontFamily: "inherit" }}>{label}: </span>{val}
-                            </div>
-                          ))}
+                        <div style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          gap: 12, fontSize: 12, color: "#374151",
+                          background: "linear-gradient(145deg, #ffffff, #f3f4f6)",
+                          borderRadius: 12, padding: "12px 14px",
+                          border: "1px solid #e5e7eb",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+                          transition: "all 0.25s ease",
+                        }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 16 }}>📍</span>
+                            <span style={{ lineHeight: 1.4, fontWeight: 500 }}>{bloodRequest.locationData.address}</span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(bloodRequest.locationData.address)}`;
+                              window.open(url, "_blank");
+                            }}
+                            style={{
+                              background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "#fff",
+                              border: "none", padding: "7px 12px", borderRadius: 10, fontSize: 12,
+                              fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center",
+                              gap: 6, boxShadow: "0 2px 5px rgba(37,99,235,0.25)", transition: "all 0.2s ease",
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 10px rgba(37,99,235,0.35)"; }}
+                            onMouseOut={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 2px 5px rgba(37,99,235,0.25)"; }}
+                          >
+                            🗺️ Map
+                          </button>
                         </div>
 
-                        {/* Action buttons */}
+                        <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }} />
+
                         <div style={{ display: "flex", gap: 8 }}>
                           <a
                             href={`tel:${bloodRequest.phone}`}
                             className="action-btn"
-                            style={{
-                              ...cs.btn("red"), flex: 1, fontSize: 12,
-                              textDecoration: "none", textAlign: "center",
-                              transition: "opacity 0.15s",
-                            }}
+                            style={{ ...cs.btn("red"), flex: 1, fontSize: 12, textDecoration: "none", textAlign: "center", transition: "opacity 0.15s" }}
                           >
                             📞 {bloodRequest.phone}
                           </a>
@@ -528,16 +477,12 @@ export default function BloodCharity() {
                           >
                             {copiedPhone === bloodRequest.phone ? "✓ Copied!" : "📋 Copy"}
                           </button>
-                          
                           {coords && (
                             <a
                               href={`https://www.google.com/maps/dir/${coords.lat},${coords.lng}/${bloodRequest.locationData.lat},${bloodRequest.locationData.lng}`}
                               target="_blank" rel="noopener noreferrer"
                               className="action-btn"
-                              style={{
-                                ...cs.btn("ghost"), fontSize: 12, padding: "7px 14px",
-                                textDecoration: "none", textAlign: "center", transition: "opacity 0.15s",
-                              }}
+                              style={{ ...cs.btn("ghost"), fontSize: 12, padding: "7px 14px", textDecoration: "none", textAlign: "center", transition: "opacity 0.15s" }}
                             >
                               🗺 Go
                             </a>
@@ -546,39 +491,27 @@ export default function BloodCharity() {
                       </div>
                     ))}
 
-                    {/* Pagination */}
                     {meta && meta.totalPages > 0 && (
                       <div style={{
                         display: "flex", alignItems: "center", justifyContent: "space-between",
-                        padding: "12px 16px",
-                        background: "#fff",
-                        border: "1px solid #f5c6c6",
-                        borderRadius: 10,
-                        marginTop: 4,
-                        marginBottom: 4,
+                        padding: "12px 16px", background: "#fff", border: "1px solid #f5c6c6",
+                        borderRadius: 10, marginTop: 4, marginBottom: 4,
                       }}>
                         <button
                           disabled={!meta.hasPrevPage}
                           onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                          style={{
-                            ...cs.btn("ghost"), fontSize: 12, padding: "6px 14px",
-                            opacity: meta.hasPrevPage ? 1 : 0.35,
-                            cursor: meta.hasPrevPage ? "pointer" : "default",
-                          }}
+                          style={{ ...cs.btn("ghost"), fontSize: 12, padding: "6px 14px", opacity: meta.hasPrevPage ? 1 : 0.35, cursor: meta.hasPrevPage ? "pointer" : "default" }}
                         >
                           ← Prev
                         </button>
-
                         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                           {Array.from({ length: meta.totalPages }, (_, i) => i + 1).map(pg => (
                             <button
                               key={pg}
                               onClick={() => setCurrentPage(pg)}
                               style={{
-                                width: 30, height: 30, borderRadius: 7,
-                                fontSize: 12, fontWeight: 600,
-                                cursor: "pointer", fontFamily: "inherit",
-                                transition: "all 0.15s",
+                                width: 30, height: 30, borderRadius: 7, fontSize: 12, fontWeight: 600,
+                                cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
                                 border: pg === meta.page ? "1px solid #c0392b" : "1px solid #f5c6c6",
                                 background: pg === meta.page ? "rgba(192,57,43,0.1)" : "transparent",
                                 color: pg === meta.page ? "#c0392b" : "#95a5a6",
@@ -588,22 +521,16 @@ export default function BloodCharity() {
                             </button>
                           ))}
                         </div>
-
                         <button
                           disabled={!meta.hasNextPage}
                           onClick={() => setCurrentPage(p => p + 1)}
-                          style={{
-                            ...cs.btn("ghost"), fontSize: 12, padding: "6px 14px",
-                            opacity: meta.hasNextPage ? 1 : 0.35,
-                            cursor: meta.hasNextPage ? "pointer" : "default",
-                          }}
+                          style={{ ...cs.btn("ghost"), fontSize: 12, padding: "6px 14px", opacity: meta.hasNextPage ? 1 : 0.35, cursor: meta.hasNextPage ? "pointer" : "default" }}
                         >
                           Next →
                         </button>
                       </div>
                     )}
 
-                    {/* Summary footer */}
                     <div style={{
                       textAlign: "center", fontSize: 11, color: "#bdc3c7",
                       marginTop: 6, marginBottom: 8, padding: "6px 0",
@@ -611,14 +538,11 @@ export default function BloodCharity() {
                     }}>
                       Showing {data.data.data.length} of {meta?.total || data.data.data.length} request{(meta?.total || 1) !== 1 ? "s" : ""}
                       {meta ? ` · Page ${meta.page} of ${meta.totalPages}` : ""}
-                      {meta?.cachedUntil
-                        ? ` · Cached until ${new Date(meta.cachedUntil).toLocaleTimeString()}`
-                        : ""}
+                      {meta?.cachedUntil ? ` · Cached until ${new Date(meta.cachedUntil).toLocaleTimeString()}` : ""}
                     </div>
                   </>
                 )}
 
-                {/* Empty state from API */}
                 {!isLoading && isSuccess && data?.data?.data?.length === 0 && (
                   <div style={{ ...cs.card, textAlign: "center", padding: "44px 20px", marginTop: 8 }}>
                     <div style={{ fontSize: 30, marginBottom: 10 }}>🔍</div>
@@ -680,14 +604,13 @@ export default function BloodCharity() {
               )}
               <button onClick={handleRequest} style={{ ...cs.btn("red"), width: "100%" }}>🩸 Post Request</button>
             </div>
-
             <div style={{ fontSize: 12, color: "#95a5a6", marginBottom: 8, paddingLeft: 2 }}>
               {requestsWithDist.length} active request{requestsWithDist.length !== 1 ? "s" : ""}
             </div>
-
           </div>
         )}
 
+        {/* ══════════════════ REGISTER ══════════════════ */}
         {activeTab === "register" && (
           <div>
             {registered ? (
@@ -745,9 +668,29 @@ export default function BloodCharity() {
                       ⚠️ Enable location tracking for nearest-first matching
                     </div>
                   )}
-                  <button onClick={handleRegister} style={{ ...cs.btn("red"), width: "100%", padding: "12px" }}>
-                    🩸 Register as Donor
-                  </button>
+
+                  {/* ── FIX: reads from reactive `user` state, updates instantly ── */}
+                  {user.isDonorRegister ? (
+                    <div style={{
+                      width: "100%", padding: "20px", borderRadius: "14px",
+                      background: "linear-gradient(135deg, #ffe5e5, #fff5f5)",
+                      border: "2px solid #ef4444", textAlign: "center",
+                      boxShadow: "0 8px 20px rgba(239,68,68,0.15)",
+                    }}>
+                      <div style={{ fontSize: "52px", marginBottom: "10px" }}>❤️</div>
+                      <h2 style={{ color: "#b91c1c", fontWeight: "700", marginBottom: "8px" }}>
+                        You are Already a Blood Donor!
+                      </h2>
+                      <p style={{ color: "#6b7280", fontSize: "15px", lineHeight: 1.6, margin: 0 }}>
+                        Thank you for registering as a blood donor. Your generosity can help
+                        save lives. We appreciate your contribution to the community.
+                      </p>
+                    </div>
+                  ) : (
+                    <button onClick={handleRegister} style={{ ...cs.btn("red"), width: "100%", padding: "12px" }}>
+                      🩸 Register as Donor
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -770,28 +713,24 @@ export default function BloodCharity() {
           </div>
         )}
 
-        {/* ══════════════════ MY LOCATION ══════════════════ */}
+        {/* ══════════════════ MAP ══════════════════ */}
         {activeTab === "map" && (
           <div>
-
-            <>
-  <BloodFilterPanel
-      selectedBlood={selectedBlood}
-      setSelectedBlood={setSelectedBlood}
-      searchRadius={searchRadius}
-      setSearchRadius={setSearchRadius}
-      setCurrentPage={setCurrentPage}
-      BLOOD_TYPES={BLOOD_TYPES}
-      COMPATIBILITY={COMPATIBILITY}
-      cs={cs}
-      coords={coords}
-    
-    />
-</>
+            <BloodFilterPanel
+              selectedBlood={selectedBlood}
+              setSelectedBlood={setSelectedBlood}
+              searchRadius={searchRadius}
+              setSearchRadius={setSearchRadius}
+              setCurrentPage={setCurrentPage}
+              BLOOD_TYPES={BLOOD_TYPES}
+              COMPATIBILITY={COMPATIBILITY}
+              cs={cs}
+              coords={coords}
+            />
           </div>
         )}
 
-
+        {/* ══════════════════ DEBUG ══════════════════ */}
         {activeTab === "debug" && (
           <div>
             <div style={{ ...cs.card, background: "#fafafa" }}>
@@ -815,6 +754,7 @@ export default function BloodCharity() {
                 <div style={{ color: "#f39c12" }}>filteredDonors: <span style={{ color: "#2ecc71" }}>{filteredDonors.length} (radius: {searchRadius}km, filter: {selectedBlood || "all"})</span></div>
                 <div style={{ color: "#f39c12" }}>api.total: <span style={{ color: "#2ecc71" }}>{meta?.total ?? "—"}</span></div>
                 <div style={{ color: "#f39c12" }}>api.page: <span style={{ color: "#2ecc71" }}>{meta ? `${meta.page} / ${meta.totalPages}` : "—"}</span></div>
+                <div style={{ color: "#f39c12" }}>user.isDonorRegister: <span style={{ color: user.isDonorRegister ? "#2ecc71" : "#e74c3c" }}>{String(!!user.isDonorRegister)}</span></div>
                 {coords && (
                   <div style={{ color: "#f39c12" }}>nearestDonor: <span style={{ color: "#2ecc71" }}>{donorsWithDist[0] ? `${donorsWithDist[0].name} (${donorsWithDist[0].dist?.toFixed(2)}km, ${donorsWithDist[0].blood})` : "none"}</span></div>
                 )}
@@ -885,70 +825,3 @@ export default function BloodCharity() {
     </div>
   );
 }
-
-/* {!coords ? (
-              <div style={{ ...cs.card, textAlign: "center", padding: "52px 20px" }}>
-                <div style={{ fontSize: 32, marginBottom: 10 }}>📍</div>
-                <div style={{ color: "#7f8c8d", fontSize: 14, marginBottom: 12 }}>
-                  {permState === "requesting" ? "Requesting location…" : "Location not active"}
-                </div>
-                <button onClick={startTracking} style={{ ...cs.btn("red"), padding: "10px 24px" }}>Enable Location</button>
-              </div>
-            ) : (
-              <>
-                <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #f5c6c6", marginBottom: 10, height: 260 }}>
-                  <iframe
-                    src={`https://maps.google.com/maps?q=${coords.lat},${coords.lng}&z=15&output=embed`}
-                    width="100%" height="100%" style={{ border: "none", display: "block" }}
-                    allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade"
-                    title="Your location"
-                  />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                  {[
-                    ["Latitude",  coords.lat.toFixed(6)],
-                    ["Longitude", coords.lng.toFixed(6)],
-                    ["Accuracy",  `±${coords.acc}m`],
-                    ["Updated",   ageStr],
-                  ].map(([l, v]) => (
-                    <div key={l} style={cs.card}>
-                      <div style={cs.label}>{l}</div>
-                      <div style={{ fontFamily: "monospace", fontSize: 14, color: "#c0392b" }}>{v}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={cs.card}>
-                  <div style={cs.label}>Address</div>
-                  <div style={{ fontSize: 14, color: "#2c3e50", lineHeight: 1.6 }}>{addressLoading ? "Loading…" : address}</div>
-                </div>
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                  <a href={`https://www.google.com/maps?q=${coords.lat},${coords.lng}`} target="_blank" rel="noopener noreferrer"
-                    style={{ ...cs.btn("ghost"), flex: 1, fontSize: 12, textDecoration: "none", textAlign: "center" }}>
-                    Google Maps ↗
-                  </a>
-                  <a href={`https://www.openstreetmap.org/?mlat=${coords.lat}&mlon=${coords.lng}&zoom=15`} target="_blank" rel="noopener noreferrer"
-                    style={{ ...cs.btn("ghost"), flex: 1, fontSize: 12, textDecoration: "none", textAlign: "center" }}>
-                    OpenStreetMap ↗
-                  </a>
-                </div>
-              </>
-            )}
-
-            <div style={{ ...cs.card, marginTop: 10 }}>
-              <div style={{ fontSize: 11, color: "#95a5a6", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Network Stats</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-                {[
-                  ["Total Donors",  donors.length],
-                  ["Available",     donors.filter(d => d.available).length],
-                  ["Requests",      requests.length],
-                  ["Critical",      requests.filter(r => r.urgency === "critical").length],
-                  ["Nearby (10km)", coords ? donorsWithDist.filter(d => d.dist <= 10).length : "—"],
-                  ["Blood Types",   [...new Set(donors.map(d => d.blood))].length],
-                ].map(([l, v]) => (
-                  <div key={l} style={{ background: "#fff9f9", borderRadius: 8, padding: "10px 12px", border: "1px solid #f5c6c6" }}>
-                    <div style={{ fontSize: 10, color: "#c0392b", marginBottom: 4 }}>{l}</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "#2c3e50", fontFamily: "monospace" }}>{v}</div>
-                  </div>
-                ))}
-              </div>
-            </div> */
