@@ -4,22 +4,22 @@ import { useFindMyNearestBloodDonorQuery } from "../redux/api/BloodDonorApi/Bloo
 
 /* ─── Design Tokens ──────────────────────────────────────────────────── */
 const TOKEN = {
-  crimson:    "#C0392B",
-  crimsonDark:"#96281B",
-  crimsonSoft:"#FDECEB",
-  crimsonMid: "#F1948A",
-  navy:       "#1A2332",
-  slate:      "#4A5568",
-  muted:      "#718096",
-  border:     "#E2E8F0",
-  bgBase:     "#F7F8FC",
-  white:      "#FFFFFF",
-  green:      "#27AE60",
-  greenSoft:  "#EAFAF1",
-  blue:       "#2980B9",
-  blueSoft:   "#EBF5FB",
-  amber:      "#E67E22",
-  amberSoft:  "#FEF9EF",
+  crimson:     "#C0392B",
+  crimsonDark: "#96281B",
+  crimsonSoft: "#FDECEB",
+  crimsonMid:  "#F1948A",
+  navy:        "#1A2332",
+  slate:       "#4A5568",
+  muted:       "#718096",
+  border:      "#E2E8F0",
+  bgBase:      "#F7F8FC",
+  white:       "#FFFFFF",
+  green:       "#27AE60",
+  greenSoft:   "#EAFAF1",
+  blue:        "#2980B9",
+  blueSoft:    "#EBF5FB",
+  amber:       "#E67E22",
+  amberSoft:   "#FEF9EF",
 };
 
 /* ─── Inline Styles ──────────────────────────────────────────────────── */
@@ -268,7 +268,7 @@ const s = {
     borderTop: `1px solid ${TOKEN.border}`,
   },
   paginationInfo: { fontSize: 11, color: TOKEN.muted },
-  pageControls: { display: "flex", gap: 4 },
+  pageControls: { display: "flex", gap: 4, flexWrap: "wrap" },
   pageBtn: (active, disabled) => ({
     minWidth: 32,
     height: 32,
@@ -287,6 +287,13 @@ const s = {
     whiteSpace: "nowrap",
     fontFamily: "inherit",
   }),
+  gapLabel: {
+    fontSize: 11,
+    color: TOKEN.muted,
+    padding: "0 4px",
+    lineHeight: "32px",
+    userSelect: "none",
+  },
 
   /* compatibility */
   compatCard: {
@@ -328,23 +335,177 @@ const s = {
   },
 };
 
-/* ─── Helpers ────────────────────────────────────────────────────────── */
-
+/* ─── Pagination Component ───────────────────────────────────────────── */
 /**
- * Returns a bounded window of page numbers centered on the current page,
- * so we never render an unbounded number of pagination buttons.
+ * Builds the page list: always includes first, last, and pages within ±2
+ * of the current page, with null sentinels for gap markers (…).
  */
-function getPageWindow(current, total, span = 5) {
-  if (total <= span) {
-    return Array.from({ length: total }, (_, i) => i + 1);
+function buildPageList(page, totalPages) {
+  const pages = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || Math.abs(i - page) <= 2) {
+      pages.push(i);
+    }
   }
-  let start = Math.max(1, current - Math.floor(span / 2));
-  let end = Math.min(total, start + span - 1);
-  start = Math.max(1, end - span + 1);
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  // Insert null where consecutive numbers have a gap > 1
+  return pages.reduce((acc, num, idx) => {
+    if (idx > 0 && num - pages[idx - 1] > 1) acc.push(null);
+    acc.push(num);
+    return acc;
+  }, []);
 }
 
-/* ─── Component ──────────────────────────────────────────────────────── */
+function Pagination({ page, totalPages, total, limit, hasPrevPage, hasNextPage, onPageChange }) {
+  const rangeStart = total === 0 ? 0 : (page - 1) * limit + 1;
+  const rangeEnd   = Math.min(page * limit, total);
+  const countLabel = `donor${total !== 1 ? "s" : ""}`;
+
+  if (totalPages <= 1) {
+    return total > 0 ? (
+      <div style={{ ...s.paginationInfo, marginTop: 10, textAlign: "right" }}>
+        Showing {rangeStart}–{rangeEnd} of {total} {countLabel}
+      </div>
+    ) : null;
+  }
+
+  const pageList = buildPageList(page, totalPages);
+
+  return (
+    <div style={s.pagination}>
+      <span style={s.paginationInfo}>
+        {rangeStart}–{rangeEnd} of {total} {countLabel}
+      </span>
+
+      <div style={s.pageControls}>
+        {/* Prev */}
+        <button
+          type="button"
+          style={s.pageBtn(false, !hasPrevPage)}
+          disabled={!hasPrevPage}
+          onClick={() => onPageChange(page - 1)}
+          aria-label="Previous page"
+        >
+          ← Prev
+        </button>
+
+        {/* Page numbers + gap markers */}
+        {pageList.map((num, idx) =>
+          num === null ? (
+            <span key={`gap-${idx}`} style={s.gapLabel} aria-hidden="true">
+              …
+            </span>
+          ) : (
+            <button
+              key={num}
+              type="button"
+              style={s.pageBtn(num === page, false)}
+              onClick={() => onPageChange(num)}
+              aria-current={num === page ? "page" : undefined}
+            >
+              {num}
+            </button>
+          )
+        )}
+
+        {/* Next */}
+        <button
+          type="button"
+          style={s.pageBtn(false, !hasNextPage)}
+          disabled={!hasNextPage}
+          onClick={() => onPageChange(page + 1)}
+          aria-label="Next page"
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Donor Card ─────────────────────────────────────────────────────── */
+function DonorCard({ donor, coords }) {
+  const mapsUrl = `https://www.google.com/maps/dir/${coords.lat},${coords.lng}/${donor.locationData?.lat},${donor.locationData?.lng}`;
+  const hasLocation = donor.locationData?.lat && donor.locationData?.lng;
+
+  return (
+    <div style={s.donorCard}>
+      {/* Blood type circle */}
+      <div style={s.bloodCircle}>{donor.blood}</div>
+
+      {/* Donor info */}
+      <div style={s.donorInfo}>
+        <div style={s.donorName}>{donor.name}</div>
+        <div style={s.donorPhone}>
+          <span aria-hidden="true">📞</span> {donor.phone}
+        </div>
+        {donor.locationData?.address && (
+          <div style={s.donorAddress}>
+            <span aria-hidden="true">📍</span> {donor.locationData.address}
+          </div>
+        )}
+      </div>
+
+      {/* Right meta */}
+      <div style={s.donorMeta}>
+        {donor.distance != null && (
+          <span style={s.distancePill}>
+            📡 {donor.distance.toFixed(2)} km
+          </span>
+        )}
+        {donor.bloodRequestType && (
+          <span style={s.typePill}>{donor.bloodRequestType}</span>
+        )}
+        {hasLocation && (
+          <a
+            href={mapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={s.goBtn}
+            aria-label={`Get directions to ${donor.name}`}
+            onMouseEnter={(e) => (e.currentTarget.style.background = TOKEN.crimson)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = TOKEN.navy)}
+          >
+            🗺 Directions
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Blood Compatibility Card ───────────────────────────────────────── */
+function CompatibilityCard({ blood, compatibility }) {
+  if (!blood || !compatibility[blood]) return null;
+  const { canDonateTo, canReceiveFrom } = compatibility[blood];
+
+  return (
+    <div style={s.compatCard}>
+      <div style={s.compatTitle}>
+        <span aria-hidden="true">🔬</span> Compatibility · {blood}
+      </div>
+      <div style={s.compatRow}>
+        <div>
+          <div style={s.compatLabel}>CAN DONATE TO</div>
+          <div style={s.compatChips}>
+            {canDonateTo.map((b) => (
+              <span key={b} style={s.compatChip}>{b}</span>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div style={s.compatLabel}>CAN RECEIVE FROM</div>
+          <div style={s.compatChips}>
+            {canReceiveFrom.map((b) => (
+              <span key={b} style={s.compatChip}>{b}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main Component ─────────────────────────────────────────────────── */
 const BloodFilterPanel = memo(function BloodFilterPanel({
   selectedBlood,
   setSelectedBlood,
@@ -368,40 +529,32 @@ const BloodFilterPanel = memo(function BloodFilterPanel({
       { skip: !coords?.lat || !coords?.lng }
     );
 
-  const bloodDonorList = data?.data?.data ?? [];
-  const meta = data?.data?.meta ?? {};
+  // Guard: no coords = nothing to render
+  if (!coords?.lat || !coords?.lng) return null;
 
+  const bloodDonorList = data?.data?.data ?? [];
   const {
-    total = 0,
-    page = 1,
-    limit = 10,
+    total      = 0,
+    page       = 1,
+    limit      = 10,
     totalPages = 1,
     hasNextPage = false,
     hasPrevPage = false,
-  } = meta;
+  } = data?.data?.meta ?? {};
 
-  const rangeStart = total === 0 ? 0 : (page - 1) * limit + 1;
-  const rangeEnd   = Math.min(page * limit, total);
-
-  if (!coords?.lat || !coords?.lng) return null;
-
-  const pageNumbers = getPageWindow(page, totalPages);
-
-  /* ── Maps URL helper ── */
-  const mapsUrl = (donor) =>
-    `https://www.google.com/maps/dir/${coords.lat},${coords.lng}/${donor.locationData?.lat},${donor.locationData?.lng}`;
+  const countLabel = `donor${total !== 1 ? "s" : ""}`;
 
   return (
     <div style={s.wrapper}>
-      {/* Keyframes for loading spinner (inline styles can't define @keyframes) */}
+      {/* Keyframes for loading spinner */}
       <style>{`
         @keyframes blood-filter-spin {
           from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
+          to   { transform: rotate(360deg); }
         }
       `}</style>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div style={s.header}>
         <span style={s.headerDrop}>🩸</span>
         <div>
@@ -412,23 +565,28 @@ const BloodFilterPanel = memo(function BloodFilterPanel({
 
       <div style={s.body}>
 
-        {/* Controls */}
+        {/* ── Controls ── */}
         <div style={s.controlsRow}>
-          {/* Blood type */}
+          {/* Blood type select */}
           <div style={s.controlBox}>
             <label style={s.label} htmlFor="blood-type-select">Blood Type</label>
             <select
               id="blood-type-select"
               style={s.select}
               value={selectedBlood}
-              onChange={(e) => { setSelectedBlood(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => {
+                setSelectedBlood(e.target.value);
+                setCurrentPage(1);
+              }}
             >
               <option value="">All types</option>
-              {BLOOD_TYPES.map((b) => <option key={b} value={b}>{b}</option>)}
+              {BLOOD_TYPES.map((b) => (
+                <option key={b} value={b}>{b}</option>
+              ))}
             </select>
           </div>
 
-          {/* Radius */}
+          {/* Radius slider */}
           <div style={s.controlBox}>
             <label style={s.label} htmlFor="search-radius-slider">Search Radius</label>
             <div style={s.sliderWrap}>
@@ -438,7 +596,10 @@ const BloodFilterPanel = memo(function BloodFilterPanel({
                 min={1}
                 max={50}
                 value={searchRadius}
-                onChange={(e) => { setSearchRadius(Number(e.target.value)); setCurrentPage(1); }}
+                onChange={(e) => {
+                  setSearchRadius(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
                 style={s.slider}
                 aria-valuetext={`${searchRadius} kilometers`}
               />
@@ -449,22 +610,17 @@ const BloodFilterPanel = memo(function BloodFilterPanel({
 
         <div style={s.divider} />
 
-        {/* Loading */}
+        {/* ── Loading ── */}
         {isLoading && (
           <div style={s.loadingBanner} role="status" aria-live="polite">
-            <span
-              style={{
-                animation: "blood-filter-spin 1s linear infinite",
-                display: "inline-block",
-              }}
-            >
+            <span style={{ animation: "blood-filter-spin 1s linear infinite", display: "inline-block" }}>
               ⏳
             </span>
             Searching for nearby donors…
           </div>
         )}
 
-        {/* Error */}
+        {/* ── Error ── */}
         {isError && (
           <div style={s.errorBanner} role="alert">
             <span>⚠️</span>
@@ -472,181 +628,49 @@ const BloodFilterPanel = memo(function BloodFilterPanel({
           </div>
         )}
 
-        {/* Results */}
+        {/* ── Results ── */}
         {isSuccess && (
           <>
-            {/* Success banner */}
+            {/* Success summary */}
             <div style={s.successBanner}>
-              ✅ Found <strong>{total}</strong> donor{total !== 1 ? "s" : ""} within{" "}
+              ✅ Found <strong>{total}</strong> {countLabel} within{" "}
               <strong>{searchRadius} km</strong>
               {selectedBlood ? ` · Blood type ${selectedBlood}` : ""}
             </div>
 
-            {/* Empty state */}
             {bloodDonorList.length === 0 ? (
+              /* Empty state */
               <div style={s.empty}>
                 <div style={s.emptyIcon}>🔍</div>
                 <div style={s.emptyText}>
-                  No donors found.<br />Try increasing the radius or selecting a different blood type.
+                  No donors found.<br />
+                  Try increasing the radius or selecting a different blood type.
                 </div>
               </div>
             ) : (
               <>
                 {/* Donor cards */}
                 {bloodDonorList.map((donor) => (
-                  <div key={donor._id} style={s.donorCard}>
-
-                    {/* Blood circle */}
-                    <div style={s.bloodCircle}>{donor.blood}</div>
-
-                    {/* Info */}
-                    <div style={s.donorInfo}>
-                      <div style={s.donorName}>{donor.name}</div>
-                      <div style={s.donorPhone}>
-                        <span aria-hidden="true">📞</span> {donor.phone}
-                      </div>
-                      {donor.locationData?.address && (
-                        <div style={s.donorAddress}>
-                          <span aria-hidden="true">📍</span> {donor.locationData.address}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Right meta */}
-                    <div style={s.donorMeta}>
-                      {donor.distance != null && (
-                        <span style={s.distancePill}>
-                          📡 {donor.distance.toFixed(2)} km
-                        </span>
-                      )}
-                      {donor.bloodRequestType && (
-                        <span style={s.typePill}>{donor.bloodRequestType}</span>
-                      )}
-                      {donor.locationData?.lat && donor.locationData?.lng && (
-                        <a
-                          href={mapsUrl(donor)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={s.goBtn}
-                          aria-label={`Get directions to ${donor.name}`}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = TOKEN.crimson)}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = TOKEN.navy)}
-                        >
-                          🗺 Directions
-                        </a>
-                      )}
-                    </div>
-                  </div>
+                  <DonorCard key={donor._id} donor={donor} coords={coords} />
                 ))}
 
                 {/* Pagination */}
-                {totalPages > 1 && (
-                  <div style={s.pagination}>
-                    <span style={s.paginationInfo}>
-                      {rangeStart}–{rangeEnd} of {total} donor{total !== 1 ? "s" : ""}
-                    </span>
-                    <div style={s.pageControls}>
-                      <button
-                        type="button"
-                        style={s.pageBtn(false, !hasPrevPage)}
-                        disabled={!hasPrevPage}
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                        aria-label="Previous page"
-                      >
-                        ← Prev
-                      </button>
-
-                      {pageNumbers[0] > 1 && (
-                        <>
-                          <button
-                            type="button"
-                            style={s.pageBtn(1 === page, false)}
-                            onClick={() => setCurrentPage(1)}
-                          >
-                            1
-                          </button>
-                          {pageNumbers[0] > 2 && (
-                            <span style={{ ...s.paginationInfo, padding: "0 4px" }}>…</span>
-                          )}
-                        </>
-                      )}
-
-                      {pageNumbers.map((num) => (
-                        <button
-                          type="button"
-                          key={num}
-                          style={s.pageBtn(num === page, false)}
-                          onClick={() => setCurrentPage(num)}
-                          aria-current={num === page ? "page" : undefined}
-                        >
-                          {num}
-                        </button>
-                      ))}
-
-                      {pageNumbers[pageNumbers.length - 1] < totalPages && (
-                        <>
-                          {pageNumbers[pageNumbers.length - 1] < totalPages - 1 && (
-                            <span style={{ ...s.paginationInfo, padding: "0 4px" }}>…</span>
-                          )}
-                          <button
-                            type="button"
-                            style={s.pageBtn(totalPages === page, false)}
-                            onClick={() => setCurrentPage(totalPages)}
-                          >
-                            {totalPages}
-                          </button>
-                        </>
-                      )}
-
-                      <button
-                        type="button"
-                        style={s.pageBtn(false, !hasNextPage)}
-                        disabled={!hasNextPage}
-                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                        aria-label="Next page"
-                      >
-                        Next →
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {totalPages === 1 && total > 0 && (
-                  <div style={{ ...s.paginationInfo, marginTop: 10, textAlign: "right" }}>
-                    Showing {rangeStart}–{rangeEnd} of {total} donor{total !== 1 ? "s" : ""}
-                  </div>
-                )}
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  total={total}
+                  limit={limit}
+                  hasPrevPage={hasPrevPage}
+                  hasNextPage={hasNextPage}
+                  onPageChange={setCurrentPage}
+                />
               </>
             )}
           </>
         )}
 
-        {/* Blood Compatibility */}
-        {selectedBlood && COMPATIBILITY[selectedBlood] && (
-          <div style={s.compatCard}>
-            <div style={s.compatTitle}>
-              <span aria-hidden="true">🔬</span> Compatibility · {selectedBlood}
-            </div>
-            <div style={s.compatRow}>
-              <div>
-                <div style={s.compatLabel}>CAN DONATE TO</div>
-                <div style={s.compatChips}>
-                  {COMPATIBILITY[selectedBlood].canDonateTo.map((b) => (
-                    <span key={b} style={s.compatChip}>{b}</span>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div style={s.compatLabel}>CAN RECEIVE FROM</div>
-                <div style={s.compatChips}>
-                  {COMPATIBILITY[selectedBlood].canReceiveFrom.map((b) => (
-                    <span key={b} style={s.compatChip}>{b}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* ── Compatibility ── */}
+        <CompatibilityCard blood={selectedBlood} compatibility={COMPATIBILITY} />
       </div>
     </div>
   );

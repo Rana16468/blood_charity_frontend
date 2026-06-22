@@ -425,21 +425,78 @@ export default function BloodCharity() {
                         </div>
 
                         {/* Address */}
-                        <div style={{
-                          fontSize: 11, color: "#7f8c8d", marginBottom: 10,
-                          background: "#fafafa", borderRadius: 7, padding: "6px 10px",
-                          border: "1px solid #f0f0f0", lineHeight: 1.6, display: "flex", gap: 6,
-                        }}>
-                          <span style={{ flexShrink: 0 }}>📍</span>
-                          <span>{bloodRequest.locationData.address}</span>
-                        </div>
+                        <div
+  style={{
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    fontSize: 12,
+    color: "#374151",
+    background: "linear-gradient(145deg, #ffffff, #f3f4f6)",
+    borderRadius: 12,
+    padding: "12px 14px",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+    transition: "all 0.25s ease",
+  }}
+>
+  {/* Left Side */}
+  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <span style={{ fontSize: 16 }}>📍</span>
+    <span
+      style={{
+        lineHeight: 1.4,
+        fontWeight: 500,
+      }}
+    >
+      {bloodRequest.locationData.address}
+    </span>
+  </div>
+
+  {/* Button */}
+  <button
+    onClick={() => {
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        bloodRequest.locationData.address
+      )}`;
+      window.open(url, "_blank");
+    }}
+    style={{
+      background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+      color: "#fff",
+      border: "none",
+      padding: "7px 12px",
+      borderRadius: 10,
+      fontSize: 12,
+      fontWeight: 500,
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      boxShadow: "0 2px 5px rgba(37, 99, 235, 0.25)",
+      transition: "all 0.2s ease",
+    }}
+    onMouseOver={(e) => {
+      e.currentTarget.style.transform = "translateY(-1px)";
+      e.currentTarget.style.boxShadow = "0 4px 10px rgba(37, 99, 235, 0.35)";
+    }}
+    onMouseOut={(e) => {
+      e.currentTarget.style.transform = "translateY(0)";
+      e.currentTarget.style.boxShadow = "0 2px 5px rgba(37, 99, 235, 0.25)";
+    }}
+  >
+    🗺️ Map
+  </button>
+</div>
+
 
                         {/* Coords row */}
                         <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
                           {[
-                            ["Lat", bloodRequest.locationData.lat.toFixed(5)],
-                            ["Lng", bloodRequest.locationData.lng.toFixed(5)],
-                            ["±", `${bloodRequest.locationData.accuracy}m`],
+                            // ["Lat", bloodRequest.locationData.lat.toFixed(5)],
+                            // ["Lng", bloodRequest.locationData.lng.toFixed(5)],
+                            // ["±", `${bloodRequest.locationData.accuracy}m`],
                           ].map(([label, val]) => (
                             <div key={label} style={{
                               fontSize: 11, fontFamily: "monospace", color: "#c0392b",
@@ -471,6 +528,7 @@ export default function BloodCharity() {
                           >
                             {copiedPhone === bloodRequest.phone ? "✓ Copied!" : "📋 Copy"}
                           </button>
+                          
                           {coords && (
                             <a
                               href={`https://www.google.com/maps/dir/${coords.lat},${coords.lng}/${bloodRequest.locationData.lat},${bloodRequest.locationData.lng}`}
@@ -730,80 +788,6 @@ export default function BloodCharity() {
     
     />
 </>
-
-
-
-              
-
-
-
-            
-            {!coords ? (
-              <div style={{ ...cs.card, textAlign: "center", padding: "52px 20px" }}>
-                <div style={{ fontSize: 32, marginBottom: 10 }}>📍</div>
-                <div style={{ color: "#7f8c8d", fontSize: 14, marginBottom: 12 }}>
-                  {permState === "requesting" ? "Requesting location…" : "Location not active"}
-                </div>
-                <button onClick={startTracking} style={{ ...cs.btn("red"), padding: "10px 24px" }}>Enable Location</button>
-              </div>
-            ) : (
-              <>
-                <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #f5c6c6", marginBottom: 10, height: 260 }}>
-                  <iframe
-                    src={`https://maps.google.com/maps?q=${coords.lat},${coords.lng}&z=15&output=embed`}
-                    width="100%" height="100%" style={{ border: "none", display: "block" }}
-                    allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade"
-                    title="Your location"
-                  />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                  {[
-                    ["Latitude",  coords.lat.toFixed(6)],
-                    ["Longitude", coords.lng.toFixed(6)],
-                    ["Accuracy",  `±${coords.acc}m`],
-                    ["Updated",   ageStr],
-                  ].map(([l, v]) => (
-                    <div key={l} style={cs.card}>
-                      <div style={cs.label}>{l}</div>
-                      <div style={{ fontFamily: "monospace", fontSize: 14, color: "#c0392b" }}>{v}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={cs.card}>
-                  <div style={cs.label}>Address</div>
-                  <div style={{ fontSize: 14, color: "#2c3e50", lineHeight: 1.6 }}>{addressLoading ? "Loading…" : address}</div>
-                </div>
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                  <a href={`https://www.google.com/maps?q=${coords.lat},${coords.lng}`} target="_blank" rel="noopener noreferrer"
-                    style={{ ...cs.btn("ghost"), flex: 1, fontSize: 12, textDecoration: "none", textAlign: "center" }}>
-                    Google Maps ↗
-                  </a>
-                  <a href={`https://www.openstreetmap.org/?mlat=${coords.lat}&mlon=${coords.lng}&zoom=15`} target="_blank" rel="noopener noreferrer"
-                    style={{ ...cs.btn("ghost"), flex: 1, fontSize: 12, textDecoration: "none", textAlign: "center" }}>
-                    OpenStreetMap ↗
-                  </a>
-                </div>
-              </>
-            )}
-
-            <div style={{ ...cs.card, marginTop: 10 }}>
-              <div style={{ fontSize: 11, color: "#95a5a6", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Network Stats</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-                {[
-                  ["Total Donors",  donors.length],
-                  ["Available",     donors.filter(d => d.available).length],
-                  ["Requests",      requests.length],
-                  ["Critical",      requests.filter(r => r.urgency === "critical").length],
-                  ["Nearby (10km)", coords ? donorsWithDist.filter(d => d.dist <= 10).length : "—"],
-                  ["Blood Types",   [...new Set(donors.map(d => d.blood))].length],
-                ].map(([l, v]) => (
-                  <div key={l} style={{ background: "#fff9f9", borderRadius: 8, padding: "10px 12px", border: "1px solid #f5c6c6" }}>
-                    <div style={{ fontSize: 10, color: "#c0392b", marginBottom: 4 }}>{l}</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "#2c3e50", fontFamily: "monospace" }}>{v}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
 
@@ -901,3 +885,70 @@ export default function BloodCharity() {
     </div>
   );
 }
+
+/* {!coords ? (
+              <div style={{ ...cs.card, textAlign: "center", padding: "52px 20px" }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>📍</div>
+                <div style={{ color: "#7f8c8d", fontSize: 14, marginBottom: 12 }}>
+                  {permState === "requesting" ? "Requesting location…" : "Location not active"}
+                </div>
+                <button onClick={startTracking} style={{ ...cs.btn("red"), padding: "10px 24px" }}>Enable Location</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #f5c6c6", marginBottom: 10, height: 260 }}>
+                  <iframe
+                    src={`https://maps.google.com/maps?q=${coords.lat},${coords.lng}&z=15&output=embed`}
+                    width="100%" height="100%" style={{ border: "none", display: "block" }}
+                    allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade"
+                    title="Your location"
+                  />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                  {[
+                    ["Latitude",  coords.lat.toFixed(6)],
+                    ["Longitude", coords.lng.toFixed(6)],
+                    ["Accuracy",  `±${coords.acc}m`],
+                    ["Updated",   ageStr],
+                  ].map(([l, v]) => (
+                    <div key={l} style={cs.card}>
+                      <div style={cs.label}>{l}</div>
+                      <div style={{ fontFamily: "monospace", fontSize: 14, color: "#c0392b" }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={cs.card}>
+                  <div style={cs.label}>Address</div>
+                  <div style={{ fontSize: 14, color: "#2c3e50", lineHeight: 1.6 }}>{addressLoading ? "Loading…" : address}</div>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <a href={`https://www.google.com/maps?q=${coords.lat},${coords.lng}`} target="_blank" rel="noopener noreferrer"
+                    style={{ ...cs.btn("ghost"), flex: 1, fontSize: 12, textDecoration: "none", textAlign: "center" }}>
+                    Google Maps ↗
+                  </a>
+                  <a href={`https://www.openstreetmap.org/?mlat=${coords.lat}&mlon=${coords.lng}&zoom=15`} target="_blank" rel="noopener noreferrer"
+                    style={{ ...cs.btn("ghost"), flex: 1, fontSize: 12, textDecoration: "none", textAlign: "center" }}>
+                    OpenStreetMap ↗
+                  </a>
+                </div>
+              </>
+            )}
+
+            <div style={{ ...cs.card, marginTop: 10 }}>
+              <div style={{ fontSize: 11, color: "#95a5a6", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Network Stats</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+                {[
+                  ["Total Donors",  donors.length],
+                  ["Available",     donors.filter(d => d.available).length],
+                  ["Requests",      requests.length],
+                  ["Critical",      requests.filter(r => r.urgency === "critical").length],
+                  ["Nearby (10km)", coords ? donorsWithDist.filter(d => d.dist <= 10).length : "—"],
+                  ["Blood Types",   [...new Set(donors.map(d => d.blood))].length],
+                ].map(([l, v]) => (
+                  <div key={l} style={{ background: "#fff9f9", borderRadius: 8, padding: "10px 12px", border: "1px solid #f5c6c6" }}>
+                    <div style={{ fontSize: 10, color: "#c0392b", marginBottom: 4 }}>{l}</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#2c3e50", fontFamily: "monospace" }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </div> */

@@ -6,6 +6,10 @@ const BloodRequestApi = baseApi.injectEndpoints({
       query: ({ selectedBlood, searchRadius, coords }) => ({
         url: "/api/v1/blood_request/find_my_location_nearest_blood_request",
         method: "GET",
+        headers:{
+          Authorization: localStorage.getItem(`${import.meta.env.VITE_TOKEN_NAME}`)
+    
+        },
         params:{
             blood: selectedBlood,
             radius: searchRadius,
