@@ -527,7 +527,7 @@ const BloodFilterPanel = memo(function BloodFilterPanel({
     return () => clearTimeout(timer);
   }, [searchRadius]);
 
-  const { data, isLoading, isError, isSuccess, isFetching } =
+  const { data, isLoading, isError, isSuccess,  } =
     useFindMyNearestBloodDonorQuery(
       {
         lat: coords?.lat,
@@ -539,9 +539,9 @@ const BloodFilterPanel = memo(function BloodFilterPanel({
       },
       { skip: !coords?.lat || !coords?.lng }
     );
-
-  // Guard: no coords = nothing to render
   if (!coords?.lat || !coords?.lng) return null;
+
+  
 
   const bloodDonorList = data?.data?.data ?? [];
   const {

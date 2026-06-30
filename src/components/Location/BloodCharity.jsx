@@ -31,7 +31,7 @@ import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 
 export default function BloodCharity() {
-  /* ── NEW: show overlay on every visit ── */
+
   const [showIntro, setShowIntro] = useState(true);
 
   const [coords, setCoords] = useState(null);
@@ -52,28 +52,7 @@ export default function BloodCharity() {
   });
   const [registered, setRegistered] = useState(false);
   const [requests, setRequests] = useState([
-    {
-      id: "R1",
-      name: "Sagor Mia",
-      blood: "O+",
-      hospital: "Thakurgaon General Hospital",
-      urgency: "critical",
-      lat: 26.028,
-      lng: 88.462,
-      contact: "+880-1711-111111",
-      createdAt: Date.now() - 3600000,
-    },
-    {
-      id: "R2",
-      name: "Roksana Begum",
-      blood: "A+",
-      hospital: "Sadar Hospital",
-      urgency: "urgent",
-      lat: 26.033,
-      lng: 88.469,
-      contact: "+880-1812-222222",
-      createdAt: Date.now() - 7200000,
-    },
+    
   ]);
   const [reqForm, setReqForm] = useState({
     name: "",
