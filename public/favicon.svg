@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Soft pink background -->
+  <rect width="100" height="100" rx="24" fill="#FDECEB" />
+  
+  <!-- Blood drop shape with gradient -->
+  <path d="M50 20 C 50 20, 25 55, 25 70 A 25 25 0 0 0 75 70 C 75 55, 50 20, 50 20 Z" fill="url(#bloodGrad)" />
+  
+  <defs>
+    <!-- Gradient for a 3D shiny effect -->
+    <linearGradient id="bloodGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff4757" />
+      <stop offset="100%" stop-color="#c0392b" />
+    </linearGradient>
+  </defs>
+</svg>

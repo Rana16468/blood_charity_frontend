@@ -8,7 +8,6 @@ import toast from "react-hot-toast";
 import { getFromLocalStorage } from "../../../utils/LocalStore/LocalStore";
 import { jwtDecode } from "jwt-decode";
 
-// ── Design Tokens ─────────────────────────────────────────────────────────────
 const T = {
   bg:        "#fdf4f4",
   surface:   "#ffffff",
@@ -24,7 +23,7 @@ const T = {
   font:      "'Crimson Pro', Georgia, serif",
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+
 const fmtTime = (ts) =>
   new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const fmtDate = (ts) =>

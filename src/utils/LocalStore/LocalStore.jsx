@@ -6,6 +6,7 @@ export const setLocalStorage = (key, token) => {
   }
 
   localStorage.setItem(key, token);
+  window.dispatchEvent(new Event("auth_change"));
 };
 
 export const getFromLocalStorage = (key) => {
@@ -22,6 +23,7 @@ export const removeFromLocalStorage = (key) => {
   }
 
   localStorage.removeItem(key);
+  window.dispatchEvent(new Event("auth_change"));
 };
 
 export const  isLoginDonor=()=>{
