@@ -533,7 +533,7 @@ const BloodFilterPanel = memo(function BloodFilterPanel({
         lat: coords?.lat,
         lng: coords?.lng,
         // Blood Type এবং Page-এর জন্য Debounce সরিয়ে সরাসরি State ব্যবহার করা হলো
-        blood: selectedBlood === "A+" ? encodeURIComponent("A+") : (selectedBlood === "B+" ? encodeURIComponent("B+") : (selectedBlood === "O+" ? encodeURIComponent("O+") : (selectedBlood === "AB+" ? encodeURIComponent("AB+") : selectedBlood))),
+        blood: selectedBlood || undefined,
         radius: debouncedRadius,
         page: currentPage,
       },
