@@ -13,55 +13,72 @@ export const useSocket = () => {
   useEffect(() => {
     if (!SOCKET_URL) return;
 
-    const token = getFromLocalStorage(import.meta.env.VITE_TOKEN_NAME);
+    let socketInstance = null;
 
-    const socketInstance = io(SOCKET_URL, {
-      transports: ["websocket"],
-      query: {
-        token: token || "",
-      },
-    });
-
-    socketRef.current = socketInstance;
-    setSocket(socketInstance);
-
-    socketInstance.on("connect", () => {
-      setConnected(true);
-    });
-
-    socketInstance.on("disconnect", () => {
-      setConnected(false);
-    });
-
-    socketInstance.on("connected", (data) => {
-
-      if (data.type === "authenticated") {
-        // console.log("🟢 Logged in user:", data.userId);
-
-        const user = decodedToken(token);
-        if (user?.role) {
-          socketInstance.emit("join", { role: user.role.toLowerCase() });
-          console.log("✅ join emitted:", user.role.toLowerCase());
-        }
-      } else {
-        console.log("👤 Guest mode");
+    const connectSocket = () => {
+      if (socketInstance) {
+        socketInstance.disconnect();
       }
-    });
 
-    socketInstance.on("user-online", (data) => {
-      console.log("🟢 User online:", data.userId);
-    });
+      const token = getFromLocalStorage(import.meta.env.VITE_TOKEN_NAME);
 
-    socketInstance.on("user-offline", (data) => {
-      console.log("🔴 User offline:", data.userId);
-    });
+      socketInstance = io(SOCKET_URL, {
+        transports: ["websocket"],
+        query: {
+          token: token || "",
+        },
+      });
 
-    socketInstance.on("error", (err) => {
-      console.log("❌ Socket error:", err?.message);
-    });
+      socketRef.current = socketInstance;
+      setSocket(socketInstance);
+
+      socketInstance.on("connect", () => {
+        setConnected(true);
+      });
+
+      socketInstance.on("disconnect", () => {
+        setConnected(false);
+      });
+
+      socketInstance.on("connected", (data) => {
+        if (data.type === "authenticated") {
+          const user = decodedToken(token);
+          if (user?.role) {
+            socketInstance.emit("join", { role: user.role.toLowerCase() });
+            console.log("✅ join emitted:", user.role.toLowerCase());
+          }
+        } else {
+          console.log("👤 Guest mode");
+        }
+      });
+
+      socketInstance.on("user-online", (data) => {
+        console.log("🟢 User online:", data.userId);
+      });
+
+      socketInstance.on("user-offline", (data) => {
+        console.log("🔴 User offline:", data.userId);
+      });
+
+      socketInstance.on("error", (err) => {
+        console.log("❌ Socket error:", err?.message);
+      });
+    };
+
+    connectSocket();
+
+    const handleAuthChange = () => {
+      console.log("Auth changed, reconnecting socket...");
+      connectSocket();
+    };
+
+    window.addEventListener("auth_change", handleAuthChange);
 
     return () => {
-      socketInstance.disconnect();
+      window.removeEventListener("auth_change", handleAuthChange);
+      if (socketInstance) {
+        socketInstance.disconnect();
+      }
     };
   }, []);
 

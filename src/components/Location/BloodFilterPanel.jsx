@@ -1,5 +1,5 @@
 // BloodFilterPanel.jsx
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { useFindMyNearestBloodDonorQuery } from "../redux/api/BloodDonorApi/BloodDonorApi";
 
 /* ─── Design Tokens ──────────────────────────────────────────────────── */
@@ -517,14 +517,27 @@ const BloodFilterPanel = memo(function BloodFilterPanel({
   COMPATIBILITY,
   coords,
 }) {
-  const { data, isLoading, isError, isSuccess } =
+  const [debouncedRadius, setDebouncedRadius] = useState(searchRadius);
+  const [debouncedBlood, setDebouncedBlood] = useState(selectedBlood);
+  const [debouncedPage, setDebouncedPage] = useState(currentPage);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedRadius(searchRadius);
+      setDebouncedBlood(selectedBlood);
+      setDebouncedPage(currentPage);
+    }, 400); // 400ms debounce
+    return () => clearTimeout(timer);
+  }, [searchRadius, selectedBlood, currentPage]);
+
+  const { data, isLoading, isError, isSuccess, isFetching } =
     useFindMyNearestBloodDonorQuery(
       {
         lat: coords?.lat,
         lng: coords?.lng,
-        blood: selectedBlood,
-        radius: searchRadius,
-        page: currentPage,
+        blood: debouncedBlood === "A+" ? encodeURIComponent("A+") : (debouncedBlood === "B+" ? encodeURIComponent("B+") : (debouncedBlood === "O+" ? encodeURIComponent("O+") : (debouncedBlood === "AB+" ? encodeURIComponent("AB+") : debouncedBlood))),
+        radius: debouncedRadius,
+        page: debouncedPage,
       },
       { skip: !coords?.lat || !coords?.lng }
     );
