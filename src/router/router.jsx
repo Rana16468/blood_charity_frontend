@@ -5,6 +5,9 @@ import Location from "../components/Location/Location";
 import Login from "../components/Login/Login";
 import MyProfile from "../components/pages/MyProfile";
 import PrivateRoute from "./PrivateRoute";
+import MyLocation from "../components/Location/my_location/MyLocation";
+import DonationHistory from "../components/Location/donation_history/DonationHistory";
+import About from "../components/About/About";
 
 
 
@@ -21,7 +24,9 @@ const router = createBrowserRouter([
       },
       {
         path:"/donate_blood",
-        element:<Location/>
+        element:<PrivateRoute>
+          <Location/>
+        </PrivateRoute>
       },
       {
         path:"/login",
@@ -32,6 +37,23 @@ const router = createBrowserRouter([
         element: <PrivateRoute>
           <MyProfile/>
         </PrivateRoute>
+      },
+      {
+        path:"/my_location",
+        element:<PrivateRoute>
+          <MyLocation/>
+        </PrivateRoute>
+
+      },
+      {
+        path:"/donation_history",
+        element:<PrivateRoute>
+          <DonationHistory/>
+        </PrivateRoute>
+      },
+      {
+        path:"/about",
+        element:<About/>
       }
  
     ],

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-import { getFromLocalStorage, saveToLocalStorage } from "../../utils/LocalStore/LocalStore.jsx";
+import { getFromLocalStorage,  setLocalStorage } from "../../utils/LocalStore/LocalStore.jsx";
 import { decodedToken } from "../../utils/jwt";
 import { encrypt } from "../../utils/CeyptoSecurity";
 import { useSocketContext } from "../../router/SocketProvider";
@@ -13,12 +13,19 @@ import { useFindMyNearestBloodRequestQuery } from "../redux/api/BloodRequstApi/B
 import { FindSetupGuide } from "./FindSetupGuide";
 import { style, TABS } from "./StopIcon";
 import BloodFilterPanel from "./BloodFilterPanel";
-// import { useNavigate } from "react-router-dom";
+
+/* ── NEW: intro overlay ── */
+import BloodIntroOverlay from "./BloodIntroOverlay";
+import toast from "react-hot-toast";
+import {  useNavigate } from "react-router-dom";
 
 
 
 
 export default function BloodCharity() {
+  /* ── NEW: show overlay on every visit ── */
+  const [showIntro, setShowIntro] = useState(true);
+
   const [coords, setCoords]                 = useState(null);
   const [isTracking, setIsTracking]         = useState(false);
   const [permState, setPermState]           = useState("idle");
@@ -41,13 +48,12 @@ export default function BloodCharity() {
   const [formLogs, setFormLogs]             = useState([]);
   const [currentPage, setCurrentPage]       = useState(1);
 
-  // ── FIX 1: user as reactive state so isDonorRegister updates without reload ──
+  const navigate = useNavigate();
+
   const [user, setUser] = useState(() => {
     const token = getFromLocalStorage(import.meta.env.VITE_TOKEN_NAME);
     return token ? decodedToken(token) : null;
   });
-
-  // const navigate = useNavigate();
 
   const watchIdRef = useRef(null);
   const ageRef     = useRef(null);
@@ -57,15 +63,8 @@ export default function BloodCharity() {
   const isReadyToSearch = !!coords;
 
   const { data, isLoading, isError, error, isSuccess } = useFindMyNearestBloodRequestQuery(
-    {
-      selectedBlood,
-      searchRadius,
-      coords,
-      page: currentPage,
-    },
-    {
-      skip: !isReadyToSearch,
-    }
+    { selectedBlood, searchRadius, coords, page: currentPage },
+    { skip: !isReadyToSearch }
   );
 
   useEffect(() => {
@@ -141,7 +140,6 @@ export default function BloodCharity() {
     if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
   }, []);
 
-  // Guard: if no user in state, token was missing on mount
   if (!user) return null;
 
   const donorsWithDist = donors
@@ -185,24 +183,20 @@ export default function BloodCharity() {
 
     if (socket && connected) {
       socket.emit("donor_register", encrypted, (res) => {
-        if (!res?.success) {
-          console.log("Error registering donor");
-          return;
+        if (!res?.success) { console.log("Error registering donor"); return; }
+        if(res?.success){
+          navigate("/login");
         }
-
-        // ── FIX 2: Update user state reactively instead of removing token ──
-        // If the server returns a refreshed token, save it and decode the new user.
         if (res.token) {
-          saveToLocalStorage(import.meta.env.VITE_TOKEN_NAME, res.token);
+          
+          setLocalStorage(import.meta.env.VITE_TOKEN_NAME, res.token);
           setUser(decodedToken(res.token));
+
         } else {
-          // Fallback: patch isDonorRegister locally so the UI reflects
-          // the change immediately without needing a page reload.
           setUser(prev => ({ ...prev, isDonorRegister: true }));
         }
       });
     } else {
-      // Socket unavailable — still mark locally so the UI stays correct
       setUser(prev => ({ ...prev, isDonorRegister: true }));
     }
   };
@@ -223,7 +217,8 @@ export default function BloodCharity() {
     if (socket && connected) {
       socket.emit("blood_request", encrypted, (res) => {
         if (!res?.success) console.log("error blood request");
-        console.log("successfully blood request recorded", res);
+        // console.log("successfully blood request recorded", res);
+        toast.success(res.message)
       });
     }
   };
@@ -234,6 +229,10 @@ export default function BloodCharity() {
     <div style={{ minHeight: "100vh", background: "#fdf4f4", color: "#2c3e50", fontFamily: "'Crimson Pro', Georgia, serif", fontSize: 15 }}>
       {style}
 
+      {showIntro && (
+        <BloodIntroOverlay onDone={() => setShowIntro(false)} />
+      )}
+
       <AppHeader
         isTracking={isTracking}
         ageStr={ageStr}
@@ -241,11 +240,10 @@ export default function BloodCharity() {
         donorCount={donors.length}
       />
 
-      <main style={{ maxWidth: 680, margin: "0 auto", padding: "16px" }}>
+      <main  style={{ maxWidth: 680, margin: "0 auto", padding: "16px" }}>
 
         {permState === "denied" && <PermissionDenied onRetry={startTracking} />}
 
-        {/* ── LOCATION CARD ── */}
         {coords && (
           <div style={{ ...cs.card, background: "#fff5f5", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 20 }}>📍</span>
@@ -264,7 +262,6 @@ export default function BloodCharity() {
           </div>
         )}
 
-        {/* ── TABS ── */}
         <div style={{ display: "flex", gap: 4, marginBottom: 14, background: "#ffffff", border: "1px solid #f5c6c6", borderRadius: 10, padding: 4, boxShadow: "0 1px 4px rgba(192,57,43,0.07)" }}>
           {TABS.map(t => (
             <button
@@ -669,8 +666,7 @@ export default function BloodCharity() {
                     </div>
                   )}
 
-                  {/* ── FIX: reads from reactive `user` state, updates instantly ── */}
-                  {user.isDonorRegister ? (
+                  {user?.isDonorRegister ? (
                     <div style={{
                       width: "100%", padding: "20px", borderRadius: "14px",
                       background: "linear-gradient(135deg, #ffe5e5, #fff5f5)",
