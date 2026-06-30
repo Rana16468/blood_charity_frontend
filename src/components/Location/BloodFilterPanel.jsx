@@ -536,6 +536,7 @@ const BloodFilterPanel = memo(function BloodFilterPanel({
         blood: selectedBlood || undefined,
         radius: debouncedRadius,
         page: currentPage,
+        limit: 10,
       },
       { skip: !coords?.lat || !coords?.lng }
     );

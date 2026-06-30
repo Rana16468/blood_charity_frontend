@@ -3,7 +3,7 @@ import { baseApi } from "../baseApi";
 const BloodDonorApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     findMyNearestBloodDonor: builder.query({
-      query: ({ lat, lng, blood, radius, page } = {}) => {
+      query: ({ lat, lng, blood, radius, page, limit } = {}) => {
        
 
         return {
@@ -15,6 +15,7 @@ const BloodDonorApi = baseApi.injectEndpoints({
             ...(lat     && { lat }),
             ...(lng     && { lng }),
             ...(page    && { page }),
+            ...(limit   && { limit }),
           },
            
         };

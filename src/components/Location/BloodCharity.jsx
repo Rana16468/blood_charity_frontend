@@ -1568,6 +1568,7 @@ export default function BloodCharity() {
               setSelectedBlood={setSelectedBlood}
               searchRadius={searchRadius}
               setSearchRadius={setSearchRadius}
+              currentPage={currentPage}
               setCurrentPage={setCurrentPage}
               BLOOD_TYPES={BLOOD_TYPES}
               COMPATIBILITY={COMPATIBILITY}
