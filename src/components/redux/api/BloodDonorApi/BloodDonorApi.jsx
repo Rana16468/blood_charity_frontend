@@ -4,7 +4,7 @@ const BloodDonorApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     findMyNearestBloodDonor: builder.query({
       query: ({ lat, lng, blood, radius } = {}) => {
-        console.log("blood request", { lat, lng, blood, radius });
+       
 
         return {
           url: "/api/v1/blood_donor/find_my_nearest_blood_donor",
@@ -15,11 +15,65 @@ const BloodDonorApi = baseApi.injectEndpoints({
             ...(lat     && { lat }),
             ...(lng     && { lng }),
           },
+           
         };
       },
+      providesTags:["blood_donor"]
     }),
+    change_location: builder.mutation({
+      query:(data)=>{
+
+        return {
+           url:"/api/v1/blood_donor/change_location",
+        method: "PATCH",
+        body: data
+        }
+      },
+      invalidatesTags:["blood_donor"]
+
+    }),
+    find_my_current_location:builder.query({
+
+      query:()=>{
+
+        return {
+          url:"/api/v1/blood_donor/find_my_current_location",
+          method:"GET"
+        }
+      },
+      providesTags:["blood_donor"]
+
+    }),
+    is_blood_donated: builder.mutation({
+      query:(data)=>{
+
+         return {
+          url:`/api/v1/blood_donor/is_blood_donated/${data.id}`,
+          method:"PATCH",
+          body: data
+         }
+      },
+      invalidatesTags:['blood_donor']
+
+
+    }),
+    findByTotalOverView:builder.query({
+      query:()=>{
+        return{
+          url:"/api/v1/blood_donor/find_by_total_overview",
+          method:"GET"
+        }
+      },
+      providesTags:["blood_donor"]
+    }),
+    
+
   }),
 });
 
-export const { useFindMyNearestBloodDonorQuery } = BloodDonorApi;
+export const { useFindMyNearestBloodDonorQuery, 
+  useChange_locationMutation ,
+   useFind_my_current_locationQuery,
+  useIs_blood_donatedMutation,
+useFindByTotalOverViewQuery} = BloodDonorApi;
 export default BloodDonorApi;

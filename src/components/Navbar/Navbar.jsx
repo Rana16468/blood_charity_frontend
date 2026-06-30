@@ -2,35 +2,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useSocketContext } from "../../router/SocketProvider";
 import { isLoginDonor, removeFromLocalStorage } from "../../utils/LocalStore/LocalStore";
+import { CSS, AVATAR_COLORS, NAV_LINKS, PROFILE_LINKS } from "./CSS";
+import { useFindMyAllNotificationQuery } from "../redux/api/Notification/NotificationApi";
+import { useFindByTotalOverViewQuery } from "../redux/api/BloodDonorApi/BloodDonorApi";
+import useInternetStatus from "../../hooks/useInternetStatus";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const AVATAR_COLORS = [
-  "#C0162C","#1565C0","#2E7D32","#6A1B9A",
-  "#E65100","#00695C","#AD1457","#0277BD",
-];
-
-const NAV_LINKS = [
-  { name: "Home",         route: "/",             icon: "🏠" },
-  { name: "Donate Blood", route: "/donate_blood", icon: "🩸" },
-  { name: "Community",    route: "/community",    icon: "🤝" },
-  { name: "About",        route: "/about",        icon: "ℹ️"  },
-];
-
-const PROFILE_LINKS = [
-  { icon: "👤", label: "My Profile",       route: "/my_profile"      },
-  { icon: "📋", label: "Donation History", route: "/donation_history" },
-  { icon: "📍", label: "My Location",      route: "/my_location"     },
-  { icon: "⚙️", label: "Settings",         route: "/settings"        },
-];
-
-const NOTIFICATIONS = [
-  { msg: "Urgent: O- needed in Dhaka Medical", time: "2m ago",  urgent: true  },
-  { msg: "New donor registered near you",       time: "10m ago", urgent: false },
-  { msg: "Blood camp tomorrow at Mirpur-10",    time: "1h ago",  urgent: false },
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function hashStr(s = "") {
   let h = 0;
@@ -41,10 +18,20 @@ function hashStr(s = "") {
 function getInitials(name = "") {
   const p = name.trim().split(/\s+/);
   if (!p[0]) return "?";
-  return p.length === 1 ? p[0][0].toUpperCase() : (p[0][0] + p.at(-1)[0]).toUpperCase();
+  return p.length === 1
+    ? p[0][0].toUpperCase()
+    : (p[0][0] + p.at(-1)[0]).toUpperCase();
 }
 
-// ─── Avatar ───────────────────────────────────────────────────────────────────
+function timeAgo(iso) {
+  const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (diff < 60)    return "just now";
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+// ─── Avatar ─────────────────────────────────────────────────────────────────
 
 function Avatar({ picture, name, bloodGroup, size = 34 }) {
   const [err, setErr] = useState(false);
@@ -69,7 +56,8 @@ function Avatar({ picture, name, bloodGroup, size = 34 }) {
         <span style={{
           position: "absolute", bottom: -4, right: -4,
           background: "#00897B", color: "#fff",
-          fontSize: 8, fontWeight: 700, borderRadius: 3, padding: "1px 3px", lineHeight: 1.3,
+          fontSize: 8, fontWeight: 700, borderRadius: 3,
+          padding: "1px 3px", lineHeight: 1.3,
         }}>
           {bloodGroup}
         </span>
@@ -78,7 +66,7 @@ function Avatar({ picture, name, bloodGroup, size = 34 }) {
   );
 }
 
-// ─── useOutsideClick ─────────────────────────────────────────────────────────
+// ─── useOutsideClick ────────────────────────────────────────────────────────
 
 function useOutsideClick(refs, cb) {
   useEffect(() => {
@@ -90,9 +78,7 @@ function useOutsideClick(refs, cb) {
   }, [refs, cb]);
 }
 
-// ─── useNavProfile ────────────────────────────────────────────────────────────
-// Always returns a valid profile object — no null, no flicker.
-// While loading: shows last known / optimistic values.
+// ─── useNavProfile ──────────────────────────────────────────────────────────
 
 function useNavProfile(socket, connected, isLogin) {
   const [profile, setProfile] = useState(null);
@@ -102,7 +88,7 @@ function useNavProfile(socket, connected, isLogin) {
     if (!socket || !connected) return;
 
     const onOk  = (res) => setProfile(res.data ?? null);
-    const onErr = ()    => {}; // keep last known profile on error
+    const onErr = ()    => {};
 
     socket.emit("navigation_profile");
     socket.on("navigation_profile_success", onOk);
@@ -117,113 +103,84 @@ function useNavProfile(socket, connected, isLogin) {
   return profile;
 }
 
-// ─── Global CSS ───────────────────────────────────────────────────────────────
+// ─── Constants ──────────────────────────────────────────────────────────────
 
-const CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@900&family=DM+Sans:wght@400;500;600;700&display=swap');
+const NOTIF_LIMIT = 5;
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+// ─── Stats config (single source of truth) ──────────────────────────────────
 
-  .nb { font-family: 'DM Sans', sans-serif; }
+const OVERVIEW_STATS = [
+  { label: "Active Donors",          key: "totalDonor" },
+  { label: "Blood Request",          key: "totalRequest" },
+  { label: "Requested Donor Found",  key: "totalRequestedDonorFind" },
+  { label: "Total User",             key: "totalUser" },
+];
 
-  @keyframes hb {
-    0%,100%{transform:scale(1)} 30%{transform:scale(1.25)} 60%{transform:scale(1.1)}
-  }
-  @keyframes fsd {
-    from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)}
-  }
-  @keyframes sdDown {
-    from{opacity:0;max-height:0} to{opacity:1;max-height:800px}
-  }
-  @keyframes glow {
-    0%,100%{box-shadow:0 0 14px rgba(255,23,68,.4)} 50%{box-shadow:0 0 28px rgba(255,23,68,.75)}
-  }
-  @keyframes pd {
-    0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(1.35)}
-  }
+// ─── StatsBanner sub-component ───────────────────────────────────────────────
 
-  .nb-link {
-    position: relative; font-weight: 500; font-size: .8rem; letter-spacing: .03em;
-    padding: 5px 10px; border-radius: 8px; background: none; border: none;
-    cursor: pointer; display: flex; align-items: center; gap: 5px;
-    font-family: 'DM Sans', sans-serif; transition: opacity .2s;
-    white-space: nowrap;
-  }
-  .nb-link:hover { opacity: .75; }
-  .nb-link.active::after {
-    content: ''; position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%);
-    width: 16px; height: 2px; background: #D4A853; border-radius: 2px;
+function StatsBanner({ overView, overViewLoading, overViewError, overViewSuccess, T }) {
+  // Loading skeleton
+  if (overViewLoading) {
+    return (
+      <div style={{ display: "flex", gap: 20 }}>
+        {OVERVIEW_STATS.map(({ label }) => (
+          <span key={label} style={{ color: T.statMut, display: "flex", alignItems: "center", gap: 4 }}>
+            {label}:{" "}
+            <span style={{
+              display: "inline-block",
+              width: 30, height: 10, borderRadius: 4,
+              background: "linear-gradient(90deg,rgba(255,255,255,.1) 25%,rgba(255,255,255,.25) 50%,rgba(255,255,255,.1) 75%)",
+              backgroundSize: "200% 100%",
+              animation: "nb-shimmer 1.2s infinite",
+            }} />
+          </span>
+        ))}
+      </div>
+    );
   }
 
-  .nb-icon {
-    background: none; border: none; cursor: pointer;
-    border-radius: 10px; padding: 7px;
-    display: flex; align-items: center; justify-content: center;
-    transition: background .2s;
-  }
-  .nb-icon:hover { background: rgba(255,255,255,.12); }
-
-  .nb-drop {
-    position: absolute; right: 0; top: calc(100% + 8px);
-    border-radius: 14px; overflow: hidden;
-    box-shadow: 0 16px 50px rgba(0,0,0,.22);
-    animation: fsd .22s ease; z-index: 60;
-  }
-  .nb-drop-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 16px; font-size: .82rem;
-    text-decoration: none; width: 100%;
-    background: none; border: none; cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    transition: background .15s;
-  }
-  .nb-drop-item:hover { filter: brightness(.92); }
-
-  .nb-mobile { animation: sdDown .3s ease; overflow: hidden; }
-  .nb-mob-btn {
-    width: 100%; display: flex; align-items: center; gap: 12px;
-    padding: 11px 14px; font-size: .88rem; font-weight: 500;
-    background: none; border: none; cursor: pointer; border-radius: 10px;
-    font-family: 'DM Sans', sans-serif; transition: background .2s; text-align: left;
+  // Error state
+  if (overViewError) {
+    return (
+      <span style={{
+        color: "#FF1744", fontSize: ".62rem", fontWeight: 600,
+        display: "flex", alignItems: "center", gap: 4,
+      }}>
+        ⚠ Stats unavailable
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            fontSize: ".58rem", color: "#FF8A80", background: "none",
+            border: "1px solid rgba(255,23,68,.35)", borderRadius: 4,
+            padding: "1px 6px", cursor: "pointer",
+          }}
+        >
+          Retry
+        </button>
+      </span>
+    );
   }
 
-  .nb-tog {
-    display: flex; align-items: center; gap: 6px;
-    border-radius: 18px; padding: 5px 10px;
-    cursor: pointer; font-size: .7rem; font-weight: 600;
-    letter-spacing: .04em; font-family: 'DM Sans', sans-serif;
-    transition: all .25s; white-space: nowrap; border: none;
+  // Success
+  if (overViewSuccess) {
+    return (
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+        {OVERVIEW_STATS.map(({ label, key }) => (
+          <span key={label} style={{ color: T.statMut }}>
+            {label}:{" "}
+            <strong style={{ color: T.statVal }}>
+              {overView?.data?.[key]?.display ?? "—"}
+            </strong>
+          </span>
+        ))}
+      </div>
+    );
   }
 
-  .nb-donate {
-    border: none; cursor: pointer; font-weight: 700; font-size: .78rem;
-    letter-spacing: .05em; border-radius: 10px; padding: 9px 14px;
-    background: linear-gradient(135deg,#D4A853,#B8892A); color: #1A0508;
-    display: flex; align-items: center; gap: 6px;
-    box-shadow: 0 3px 12px rgba(212,168,83,.4);
-    transition: transform .25s, box-shadow .25s; font-family: 'DM Sans', sans-serif;
-  }
-  .nb-donate:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(212,168,83,.55); }
+  return null;
+}
 
-  .nb-sos {
-    border: none; cursor: pointer; font-weight: 700; font-size: .75rem;
-    letter-spacing: .06em; border-radius: 10px; padding: 9px 14px;
-    background: linear-gradient(135deg,#FF1744,#C0162C); color: #fff;
-    display: flex; align-items: center; gap: 6px;
-    animation: glow 2s infinite; font-family: 'DM Sans', sans-serif;
-  }
-
-  .pd { animation: pd 2s infinite; border-radius: 50%; display: inline-block; }
-
-  /* Responsive */
-  .nb-desktop  { display: flex; }
-  .nb-ham      { display: flex; }
-  @media (max-width:1023px) { .nb-desktop { display: none !important; } }
-  @media (min-width:1024px) { .nb-ham     { display: none !important; } }
-  @media (max-width:640px)  { .nb-toglabel { display: none !important; } }
-`;
-
-// ─── Navbar ───────────────────────────────────────────────────────────────────
+// ─── Navbar ─────────────────────────────────────────────────────────────────
 
 export default function Navbar() {
   const { socket, connected } = useSocketContext();
@@ -231,46 +188,123 @@ export default function Navbar() {
   const location  = useLocation();
   const isLogin   = isLoginDonor();
 
+  // UI state
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [dark,        setDark]        = useState(false);
   const [notifOpen,   setNotifOpen]   = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [scrolled,    setScrolled]    = useState(false);
+  const [isMobile,    setIsMobile]    = useState(window.innerWidth < 768);
 
+  // Notification pagination & local state
+  const [notifPage,   setNotifPage]   = useState(1);
+  const [localNotifs, setLocalNotifs] = useState([]);
+
+  // Profile from socket
   const profile    = useNavProfile(socket, connected, isLogin);
   const activeLink = NAV_LINKS.find(l => l.route === location.pathname)?.name ?? "Home";
+const isOnline  = useInternetStatus();
+
+  const {
+  data,
+  isLoading,
+  isSuccess,
+  isError,
+} = useFindMyAllNotificationQuery(undefined, {
+  skip:  !isLogin,
+});
+
+console.log(isLogin)
+
+
+  const {
+    data:          overView,
+    isLoading:     overViewLoading,
+    isSuccess:     overViewSuccess,
+    error:         overViewError,
+  } = useFindByTotalOverViewQuery(undefined ,{
+    skip: !isOnline,
+  });
+
+  // Track mobile breakpoint
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", fn, { passive: true });
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+
+  // Sync API data → local state
+  useEffect(() => {
+    if (isSuccess && data?.data?.result) {
+      setLocalNotifs(data.data.result);
+      setNotifPage(1);
+    }
+  }, [isSuccess, data]);
+
+  // Derived notification values
+  const unreadCount  = localNotifs.filter(n => n.status === "unread").length;
+  const totalNotifs  = localNotifs.length;
+  const totalPages   = Math.max(1, Math.ceil(totalNotifs / NOTIF_LIMIT));
+  const pagedNotifs  = localNotifs.slice(
+    (notifPage - 1) * NOTIF_LIMIT,
+    notifPage * NOTIF_LIMIT,
+  );
+
+  // Notification actions
+  const markAllRead = useCallback((e) => {
+    e?.stopPropagation();
+    setLocalNotifs(prev => prev.map(n => ({ ...n, status: "read" })));
+  }, []);
+
+  const markOneRead = useCallback((id) => {
+    setLocalNotifs(prev =>
+      prev.map(n => n._id === id ? { ...n, status: "read" } : n)
+    );
+  }, []);
+
+  const goPage = useCallback((e, pg) => {
+    e.stopPropagation();
+    if (pg < 1 || pg > totalPages) return;
+    setNotifPage(pg);
+  }, [totalPages]);
 
   // Theme tokens
   const T = dark ? {
-    nav:      "linear-gradient(135deg,rgba(107,0,0,.97),rgba(192,22,44,.97),rgba(86,0,0,.97))",
-    drop:     "#1A0508",
-    dropBord: "rgba(212,168,83,.25)",
-    mob:      "linear-gradient(180deg,#8B0000,#1A0508)",
-    text:     "rgba(255,228,232,.85)",
-    muted:    "rgba(255,228,232,.55)",
-    icon:     "rgba(255,228,232,.75)",
-    hover:    "rgba(255,255,255,.09)",
-    brand:    "#fff",
-    name:     "#fff",
-    tog:      { bg: "rgba(255,255,255,.12)", bord: "rgba(255,255,255,.2)", txt: "rgba(255,228,232,.85)" },
-    sec:      "rgba(255,255,255,.07)",
-    statVal:  "#D4A853",
-    statMut:  "rgba(255,228,232,.55)",
+    nav:       "linear-gradient(135deg,rgba(107,0,0,.97),rgba(192,22,44,.97),rgba(86,0,0,.97))",
+    drop:      "#1A0508",
+    dropBord:  "rgba(212,168,83,.25)",
+    mob:       "linear-gradient(180deg,#8B0000,#1A0508)",
+    text:      "rgba(255,228,232,.85)",
+    muted:     "rgba(255,228,232,.55)",
+    icon:      "rgba(255,228,232,.75)",
+    hover:     "rgba(255,255,255,.09)",
+    brand:     "#fff",
+    name:      "#fff",
+    tog:       { bg: "rgba(255,255,255,.12)", bord: "rgba(255,255,255,.2)", txt: "rgba(255,228,232,.85)" },
+    sec:       "rgba(255,255,255,.07)",
+    statVal:   "#D4A853",
+    statMut:   "rgba(255,228,232,.55)",
+    unreadBg:  "rgba(255,255,255,.04)",
+    accentTxt: "#FF8A80",
+    accentBord:"#C0162C",
   } : {
-    nav:      "linear-gradient(135deg,rgba(255,245,245,.98),#fff,rgba(255,240,242,.98))",
-    drop:     "#fff",
-    dropBord: "rgba(192,22,44,.15)",
-    mob:      "linear-gradient(180deg,#FFF0F2,#fff)",
-    text:     "rgba(70,5,15,.85)",
-    muted:    "rgba(70,5,15,.5)",
-    icon:     "rgba(139,0,0,.75)",
-    hover:    "rgba(192,22,44,.07)",
-    brand:    "#8B0000",
-    name:     "#5A0A14",
-    tog:      { bg: "rgba(192,22,44,.07)", bord: "rgba(192,22,44,.18)", txt: "rgba(70,5,15,.8)" },
-    sec:      "rgba(192,22,44,.07)",
-    statVal:  "#C0162C",
-    statMut:  "rgba(70,5,15,.5)",
+    nav:       "linear-gradient(135deg,rgba(255,245,245,.98),#fff,rgba(255,240,242,.98))",
+    drop:      "#fff",
+    dropBord:  "rgba(192,22,44,.15)",
+    mob:       "linear-gradient(180deg,#FFF0F2,#fff)",
+    text:      "rgba(70,5,15,.85)",
+    muted:     "rgba(70,5,15,.5)",
+    icon:      "rgba(139,0,0,.75)",
+    hover:     "rgba(192,22,44,.07)",
+    brand:     "#8B0000",
+    name:      "#5A0A14",
+    tog:       { bg: "rgba(192,22,44,.07)", bord: "rgba(192,22,44,.18)", txt: "rgba(70,5,15,.8)" },
+    sec:       "rgba(192,22,44,.07)",
+    statVal:   "#C0162C",
+    statMut:   "rgba(70,5,15,.5)",
+    unreadBg:  "rgba(192,22,44,.03)",
+    accentTxt: "#C0162C",
+    accentBord:"#C0162C",
   };
 
   // Scroll detection
@@ -280,17 +314,20 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", fn);
   }, []);
 
-  // Close menu on route change
+  // Close menus on route change
   useEffect(() => {
     setMenuOpen(false);
     setNotifOpen(false);
     setProfileOpen(false);
   }, [location.pathname]);
 
-  // Outside click
+  // Outside click (desktop only — mobile uses backdrop)
   const nRef = useRef(null);
   const pRef = useRef(null);
-  const close = useCallback(() => { setNotifOpen(false); setProfileOpen(false); }, []);
+  const close = useCallback(() => {
+    setNotifOpen(false);
+    setProfileOpen(false);
+  }, []);
   useOutsideClick([nRef, pRef], close);
 
   // Handlers
@@ -304,22 +341,19 @@ export default function Navbar() {
     setNotifOpen(v => !v);
     setProfileOpen(false);
   };
+
   const toggleProfile = (e) => {
     e.stopPropagation();
     setProfileOpen(v => !v);
     setNotifOpen(false);
   };
 
-  // Derived display values — always something to show, never "Loading"
-  const displayName = isLogin
-    ? (profile?.name || "Donor")
-    : "Guest";
-  const displayRole = isLogin
-    ? (profile?.role || "Donor")
-    : "Visitor";
-  const shortName = displayName.split(" ")[0];
+  // Derived display values
+  const displayName = isLogin ? (profile?.name || "Donor") : "Guest";
+  const displayRole = isLogin ? (profile?.role || "Donor") : "Visitor";
+  const shortName   = displayName.split(" ")[0];
 
-  // Hamburger
+  // Hamburger icon
   const Ham = ({ open }) => {
     const bar = (t, o = 1) => ({
       display: "block", width: 20, height: 2,
@@ -328,16 +362,240 @@ export default function Navbar() {
     });
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
-        <span style={bar(open ? "rotate(45deg) translate(0,6px)" : "none")} />
+        <span style={bar(open ? "rotate(45deg) translate(0,6px)"   : "none")} />
         <span style={bar("none", open ? 0 : 1)} />
         <span style={bar(open ? "rotate(-45deg) translate(0,-6px)" : "none")} />
       </div>
     );
   };
 
+  // Shared page-button style
+  const pgBtn = (active, disabled) => ({
+    width: 24, height: 24, borderRadius: 6,
+    border: `1px solid ${active ? T.accentBord : T.dropBord}`,
+    background: active ? (dark ? "rgba(192,22,44,.35)" : "rgba(192,22,44,.1)") : "none",
+    cursor: disabled ? "not-allowed" : "pointer",
+    color: active ? T.accentTxt : (disabled ? T.muted : T.text),
+    fontWeight: active ? 700 : 400,
+    fontSize: 11,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    flexShrink: 0,
+    transition: "all .15s",
+  });
+
+  // ─── Shared notification dropdown content ─────────────────────────────────
+  const NotifContent = ({ onClose }) => (
+    <>
+      {/* Header */}
+      <div style={{
+        padding: "12px 16px",
+        borderBottom: `1px solid ${T.sec}`,
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ color: T.name, fontWeight: 600, fontSize: ".85rem" }}>
+            Notifications
+          </span>
+          {unreadCount > 0 && (
+            <span style={{
+              minWidth: 18, height: 18, borderRadius: 9,
+              background: "#FF1744", color: "#fff",
+              fontSize: 10, fontWeight: 700,
+              display: "inline-flex", alignItems: "center",
+              justifyContent: "center", padding: "0 4px",
+            }}>
+              {unreadCount}
+            </span>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {unreadCount > 0 && (
+            <button
+              onClick={markAllRead}
+              style={{
+                fontSize: 10, color: "#D4A853", cursor: "pointer",
+                border: "none", background: "none", padding: 0,
+              }}
+            >
+              Mark all read
+            </button>
+          )}
+          {isMobile && (
+            <button
+              onClick={onClose}
+              style={{
+                fontSize: 16, color: T.muted, cursor: "pointer",
+                border: "none", background: "none", padding: "0 2px",
+                lineHeight: 1,
+              }}
+              aria-label="Close notifications"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+
+      {isLoading && (
+        <div style={{ padding: 24, textAlign: "center", fontSize: ".78rem", color: T.muted }}>
+          Loading…
+        </div>
+      )}
+
+      {isError && (
+        <div style={{ padding: 16, textAlign: "center", fontSize: ".78rem", color: "#FF1744" }}>
+          Failed to load notifications.
+        </div>
+      )}
+
+      {isSuccess && pagedNotifs.length === 0 && (
+        <div style={{ padding: 28, textAlign: "center", fontSize: ".78rem", color: T.muted }}>
+          No notifications
+        </div>
+      )}
+
+      {isSuccess && pagedNotifs?.map((n) => (
+        <div
+          key={n._id}
+          onClick={() => markOneRead(n._id)}
+          style={{
+            padding: "11px 16px",
+            borderBottom: `1px solid ${T.sec}`,
+            display: "flex", gap: 10, cursor: "pointer", alignItems: "flex-start",
+            background: n.status === "unread" ? T.unreadBg : "transparent",
+            transition: "background .15s",
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = T.hover}
+          onMouseLeave={e => {
+            e.currentTarget.style.background =
+              n.status === "unread" ? T.unreadBg : "transparent";
+          }}
+        >
+          <span style={{
+            width: 7, height: 7, borderRadius: "50%",
+            flexShrink: 0, marginTop: 5,
+            background: n.status === "unread" ? "#FF1744" : "#4ade80",
+          }} />
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{
+              fontSize: ".78rem",
+              fontWeight: n.status === "unread" ? 600 : 400,
+              color: T.name, lineHeight: 1.35, marginBottom: 2,
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}>
+              {n.title}
+            </p>
+
+            <p style={{
+              fontSize: ".72rem", color: T.text,
+              lineHeight: 1.4, marginBottom: 4,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}>
+              {n.content}
+            </p>
+
+            <span style={{ fontSize: ".65rem", color: T.muted, flexShrink: 0 }}>
+              {timeAgo(n.createdAt)}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      {isSuccess && totalPages > 1 && (
+        <div style={{
+          padding: "8px 14px",
+          borderTop: `1px solid ${T.sec}`,
+          display: "flex", alignItems: "center",
+          justifyContent: "space-between", gap: 8,
+        }}>
+          <span style={{ fontSize: 10, color: T.muted, flexShrink: 0 }}>
+            Page {notifPage} of {totalPages} · {totalNotifs} total
+          </span>
+
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <button
+              disabled={notifPage <= 1}
+              onClick={(e) => goPage(e, notifPage - 1)}
+              style={pgBtn(false, notifPage <= 1)}
+              aria-label="Previous page"
+            >
+              ‹
+            </button>
+
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(pg => (
+              <button
+                key={pg}
+                onClick={(e) => goPage(e, pg)}
+                style={pgBtn(pg === notifPage, false)}
+                aria-label={`Page ${pg}`}
+                aria-current={pg === notifPage ? "page" : undefined}
+              >
+                {pg}
+              </button>
+            ))}
+
+            <button
+              disabled={notifPage >= totalPages}
+              onClick={(e) => goPage(e, notifPage + 1)}
+              style={pgBtn(false, notifPage >= totalPages)}
+              aria-label="Next page"
+            >
+              ›
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <>
-      <style>{CSS}</style>
+      <style>{`
+        ${CSS}
+        @keyframes nb-shimmer {
+          0%   { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        /* Responsive overrides */
+        @media (max-width: 480px) {
+          .nb-tog { display: none !important; }
+        }
+        @media (max-width: 360px) {
+          .nb-toglabel { display: none !important; }
+        }
+      `}</style>
+
+      {/* ── Mobile notification modal ── */}
+      {notifOpen && isMobile && (
+        <div
+          onClick={() => setNotifOpen(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 200,
+            background: "rgba(0,0,0,.55)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "0 16px",
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: "min(360px, 100%)",
+              maxHeight: "80vh",
+              overflowY: "auto",
+              borderRadius: 18,
+              background: T.drop,
+              border: `1px solid ${T.dropBord}`,
+              boxShadow: "0 24px 64px rgba(0,0,0,.45)",
+            }}
+          >
+            <NotifContent onClose={() => setNotifOpen(false)} />
+          </div>
+        </div>
+      )}
 
       <nav className="nb" style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 50,
@@ -349,18 +607,21 @@ export default function Navbar() {
         transition: "box-shadow .35s",
       }}>
 
-        {/* Stats bar — desktop only */}
+        {/* ── Stats bar (desktop only) ── */}
         <div className="nb-desktop" style={{
           borderBottom: `1px solid ${T.sec}`, padding: "5px 24px",
-          justifyContent: "space-between", alignItems: "center", fontSize: ".62rem",
+          justifyContent: "space-between", alignItems: "center",
+          fontSize: ".62rem",
         }}>
-          <div style={{ display: "flex", gap: 20 }}>
-            {[["Active Donors","12,480"],["Lives Saved","3,200+"],["Camps Today","14"]].map(([l,v]) => (
-              <span key={l} style={{ color: T.statMut }}>
-                {l}: <strong style={{ color: T.statVal }}>{v}</strong>
-              </span>
-            ))}
-          </div>
+          {/* Stats — loading / error / success handled inside StatsBanner */}
+          <StatsBanner
+            overView={overView}
+            overViewLoading={overViewLoading}
+            overViewError={overViewError}
+            overViewSuccess={overViewSuccess}
+            T={T}
+          />
+
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 4, color: T.statMut }}>
               <span className="pd" style={{ width: 6, height: 6, background: connected ? "#4ade80" : "#ef4444" }} />
@@ -370,7 +631,7 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Main row */}
+        {/* ── Main row ── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "10px 16px", gap: 8,
@@ -394,7 +655,7 @@ export default function Navbar() {
             </div>
           </Link>
 
-          {/* Desktop nav */}
+          {/* Desktop nav links */}
           <nav className="nb-desktop" style={{ alignItems: "center", gap: 2 }}>
             {NAV_LINKS.map(l => (
               <button key={l.name}
@@ -424,59 +685,52 @@ export default function Navbar() {
                   transition: "left .28s", boxShadow: "0 1px 3px rgba(0,0,0,.3)",
                 }} />
               </div>
-              <span className="nb-toglabel" style={{ fontSize: ".68rem" }}>{dark ? "🌙 Dark" : "☀️ Light"}</span>
+              <span className="nb-toglabel" style={{ fontSize: ".68rem" }}>
+                {dark ? "🌙 Dark" : "☀️ Light"}
+              </span>
             </button>
 
-            {/* Notif */}
+            {/* ── Notification bell ── */}
             <div ref={nRef} style={{ position: "relative" }}>
-              <button className="nb-icon" onClick={toggleNotif} style={{ color: T.icon, position: "relative" }}>
+              <button className="nb-icon" onClick={toggleNotif}
+                style={{ color: T.icon, position: "relative" }}
+                aria-label="Notifications"
+              >
                 <svg width={18} height={18} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
-                {isLogin && (
+
+                {isLogin && unreadCount > 0 && (
                   <span style={{
                     position: "absolute", top: 1, right: 1,
-                    width: 14, height: 14, borderRadius: "50%",
+                    minWidth: 14, height: 14, borderRadius: 7,
                     background: "#FF1744", color: "#fff", fontSize: 8,
-                    display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700,
-                  }}>3</span>
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontWeight: 700, padding: "0 3px", lineHeight: 1,
+                  }}>
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
                 )}
               </button>
 
-              {notifOpen && (
+              {/* Desktop notification dropdown */}
+              {notifOpen && !isMobile && (
                 <div className="nb-drop" style={{
-                  width: "min(280px,90vw)",
+                  width: "min(320px,92vw)", padding: 0,
                   background: T.drop, border: `1px solid ${T.dropBord}`,
                 }}>
-                  <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.sec}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ color: T.name, fontWeight: 600, fontSize: ".85rem" }}>Notifications</span>
-                    <span style={{ fontSize: 10, color: T.muted, cursor: "pointer" }}>Mark all read</span>
-                  </div>
-                  {NOTIFICATIONS.map((n, i) => (
-                    <div key={i} style={{
-                      padding: "11px 16px", borderBottom: `1px solid ${T.sec}`,
-                      display: "flex", gap: 10, cursor: "pointer", alignItems: "flex-start",
-                    }}>
-                      <span className="pd" style={{ width: 7, height: 7, marginTop: 4, background: n.urgent ? "#FF1744" : "#4ade80" }} />
-                      <div>
-                        <p style={{ color: T.text, fontSize: ".75rem", lineHeight: 1.4 }}>{n.msg}</p>
-                        <p style={{ color: T.muted, fontSize: 10, marginTop: 3 }}>{n.time}</p>
-                      </div>
-                    </div>
-                  ))}
-                  <div style={{ padding: 12, textAlign: "center", fontSize: 11, color: "#D4A853", cursor: "pointer" }}>
-                    View all →
-                  </div>
+                  <NotifContent onClose={() => setNotifOpen(false)} />
                 </div>
               )}
             </div>
 
-            {/* Profile */}
+            {/* ── Profile ── */}
             <div ref={pRef} style={{ position: "relative" }}>
               <button onClick={toggleProfile} style={{
                 display: "flex", alignItems: "center", gap: 8,
-                background: "none", border: "none", cursor: "pointer", borderRadius: 12, padding: "5px 7px",
+                background: "none", border: "none", cursor: "pointer",
+                borderRadius: 12, padding: "5px 7px",
               }}>
                 <Avatar
                   picture={profile?.picture}
@@ -484,58 +738,44 @@ export default function Navbar() {
                   bloodGroup={profile?.blood_group}
                   size={32}
                 />
-              {/* Mobile */}
-<div className="nb-toglabel hidden text-left flex flex-col">
-  <span
-    className="text-xs font-bold leading-tight"
-    style={{ color: T.name }}
-  >
-    {shortName}
-  </span>
 
-  <span
-    className="text-[10px] leading-tight mt-0.5"
-    style={{ color: T.muted }}
-  >
-    {displayRole}
-  </span>
-</div>
+                {/* Single label — no duplicate */}
+                <div style={{ textAlign: "left", display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontSize: ".75rem", fontWeight: 700, color: T.name, lineHeight: 1.2 }}>
+                    {shortName}
+                  </span>
+                  <span style={{ fontSize: ".65rem", color: T.muted, marginTop: 1, lineHeight: 1.2 }}>
+                    {displayRole}
+                  </span>
+                </div>
 
-{/* Desktop */}
-<div className="nb-desktop text-left flex flex-col">
-  <span
-    className="text-xs font-bold leading-tight"
-    style={{ color: T.name }}
-  >
-    {shortName}
-  </span>
-
-  <span
-    className="text-[10px] leading-tight mt-0.5"
-    style={{ color: T.muted }}
-  >
-    {displayRole}
-  </span>
-</div>
                 <svg className="nb-desktop" width={11} height={11} fill="none" stroke={T.muted} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
 
+              {/* Profile dropdown */}
               {profileOpen && (
                 <div className="nb-drop" style={{
                   width: 210, background: T.drop, border: `1px solid ${T.dropBord}`,
                 }}>
-                  {/* Header */}
-                  <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${T.sec}`, display: "flex", gap: 10, alignItems: "center" }}>
-                    <Avatar picture={profile?.picture} name={displayName} bloodGroup={profile?.blood_group} size={38} />
+                  <div style={{
+                    padding: "12px 16px 10px",
+                    borderBottom: `1px solid ${T.sec}`,
+                    display: "flex", gap: 10, alignItems: "center",
+                  }}>
+                    <Avatar
+                      picture={profile?.picture}
+                      name={displayName}
+                      bloodGroup={profile?.blood_group}
+                      size={38}
+                    />
                     <div>
                       <div style={{ color: T.name, fontWeight: 700, fontSize: ".82rem" }}>{displayName}</div>
                       <div style={{ color: T.muted, fontSize: ".68rem", marginTop: 1 }}>{displayRole}</div>
                     </div>
                   </div>
 
-                  {/* Menu items */}
                   {isLogin && PROFILE_LINKS.map(({ icon, label, route }) => (
                     <Link key={label} to={route} className="nb-drop-item"
                       style={{ color: T.text, background: T.drop }}
@@ -546,7 +786,6 @@ export default function Navbar() {
                     </Link>
                   ))}
 
-                  {/* Sign in / out */}
                   {isLogin ? (
                     <button className="nb-drop-item" onClick={signOut}
                       style={{ color: "#fff", background: "linear-gradient(135deg,#C0162C,#8B0000)", justifyContent: "center" }}>
@@ -563,14 +802,18 @@ export default function Navbar() {
             </div>
 
             {/* Hamburger */}
-            <button className="nb-ham nb-icon" onClick={() => setMenuOpen(v => !v)}
-              aria-label="Toggle menu" style={{ color: T.icon }}>
+            <button
+              className="nb-ham nb-icon"
+              onClick={() => setMenuOpen(v => !v)}
+              aria-label="Toggle menu"
+              style={{ color: T.icon }}
+            >
               <Ham open={menuOpen} />
             </button>
           </div>
         </div>
 
-        {/* Mobile drawer */}
+        {/* ── Mobile drawer ── */}
         {menuOpen && (
           <div className="nb-mobile" style={{
             background: T.mob, borderTop: `1px solid ${T.sec}`,
@@ -578,8 +821,17 @@ export default function Navbar() {
           }}>
 
             {/* Profile summary */}
-            <div style={{ padding: "14px 16px 12px", display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${T.sec}` }}>
-              <Avatar picture={profile?.picture} name={displayName} bloodGroup={profile?.blood_group} size={44} />
+            <div style={{
+              padding: "14px 16px 12px",
+              display: "flex", alignItems: "center", gap: 12,
+              borderBottom: `1px solid ${T.sec}`,
+            }}>
+              <Avatar
+                picture={profile?.picture}
+                name={displayName}
+                bloodGroup={profile?.blood_group}
+                size={44}
+              />
               <div>
                 <div style={{ color: T.name, fontWeight: 700, fontSize: ".9rem" }}>{displayName}</div>
                 <div style={{ color: T.muted, fontSize: ".72rem", marginTop: 2 }}>
@@ -590,6 +842,37 @@ export default function Navbar() {
                 <span className="pd" style={{ width: 7, height: 7, background: connected ? "#4ade80" : "#ef4444" }} />
                 <span style={{ fontSize: 10, color: T.muted }}>{connected ? "Live" : "Offline"}</span>
               </div>
+            </div>
+
+            {/* Mobile stats summary (loading / error / success) */}
+            <div style={{
+              padding: "10px 16px",
+              borderBottom: `1px solid ${T.sec}`,
+              fontSize: ".68rem",
+            }}>
+              {overViewLoading && (
+                <span style={{ color: T.statMut, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{
+                    display: "inline-block", width: 60, height: 8, borderRadius: 4,
+                    background: "linear-gradient(90deg,rgba(192,22,44,.1) 25%,rgba(192,22,44,.25) 50%,rgba(192,22,44,.1) 75%)",
+                    backgroundSize: "200% 100%",
+                    animation: "nb-shimmer 1.2s infinite",
+                  }} />
+                  Loading stats…
+                </span>
+              )}
+              {overViewError && (
+                <span style={{ color: "#FF1744", fontWeight: 600 }}>⚠ Stats unavailable</span>
+              )}
+              {overViewSuccess && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
+                  {OVERVIEW_STATS.map(({ label, key }) => (
+                    <span key={key} style={{ color: T.statMut }}>
+                      {label}: <strong style={{ color: T.statVal }}>{overView?.data?.[key]?.display ?? "—"}</strong>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Nav links */}
@@ -609,7 +892,11 @@ export default function Navbar() {
 
             {/* Account section */}
             <div style={{ padding: "8px 12px", borderBottom: `1px solid ${T.sec}` }}>
-              <p style={{ fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: ".12em", padding: "6px 4px" }}>
+              <p style={{
+                fontSize: 9, color: T.muted,
+                textTransform: "uppercase", letterSpacing: ".12em",
+                padding: "6px 4px",
+              }}>
                 Account
               </p>
               {isLogin
@@ -651,9 +938,11 @@ export default function Navbar() {
               </div>
               {isLogin && (
                 <button onClick={signOut} style={{
-                  width: "100%", padding: 10, borderRadius: 10, border: "none", cursor: "pointer",
-                  background: "linear-gradient(135deg,#C0162C,#8B0000)", color: "#fff",
-                  fontSize: ".85rem", fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
+                  width: "100%", padding: 10, borderRadius: 10,
+                  border: "none", cursor: "pointer",
+                  background: "linear-gradient(135deg,#C0162C,#8B0000)",
+                  color: "#fff", fontSize: ".85rem", fontWeight: 600,
+                  fontFamily: "'DM Sans',sans-serif",
                 }}>
                   🚪 Sign Out
                 </button>
@@ -663,8 +952,7 @@ export default function Navbar() {
         )}
       </nav>
 
-      {/* Spacer so content isn't hidden under fixed nav */}
-      <div style={{ height: "clamp(58px,9vw,90px)" }} />
+      <br /><br /><br />
     </>
   );
 }

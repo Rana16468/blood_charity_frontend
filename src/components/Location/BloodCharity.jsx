@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 
-import { getFromLocalStorage, setLocalStorage } from "../../utils/LocalStore/LocalStore.jsx";
+import { getFromLocalStorage,  setLocalStorage } from "../../utils/LocalStore/LocalStore.jsx";
 import { decodedToken } from "../../utils/jwt";
 import { encrypt } from "../../utils/CeyptoSecurity";
 import { useSocketContext } from "../../router/SocketProvider";
@@ -15,19 +14,22 @@ import { FindSetupGuide } from "./FindSetupGuide";
 import { style, TABS } from "./StopIcon";
 import BloodFilterPanel from "./BloodFilterPanel";
 
-// ── Persist activeTab key ──────────────────────────────────────────────────
-const TAB_STORAGE_KEY = "bloodCharity_activeTab";
+/* ── NEW: intro overlay ── */
+import BloodIntroOverlay from "./BloodIntroOverlay";
+import toast from "react-hot-toast";
+import {  useNavigate } from "react-router-dom";
+
+
+
 
 export default function BloodCharity() {
+  /* ── NEW: show overlay on every visit ── */
+  const [showIntro, setShowIntro] = useState(true);
+
   const [coords, setCoords]                 = useState(null);
   const [isTracking, setIsTracking]         = useState(false);
   const [permState, setPermState]           = useState("idle");
-
-  // ── FIX 2: read persisted tab on first mount, fallback to "find" ──────
-  const [activeTab, setActiveTab]           = useState(
-    () => localStorage.getItem(TAB_STORAGE_KEY) ?? "find"
-  );
-
+  const [activeTab, setActiveTab]           = useState("find");
   const [selectedBlood, setSelectedBlood]   = useState("");
   const [donors, setDonors]                 = useState(MOCK_DONORS);
   const [address, setAddress]               = useState(null);
@@ -46,14 +48,12 @@ export default function BloodCharity() {
   const [formLogs, setFormLogs]             = useState([]);
   const [currentPage, setCurrentPage]       = useState(1);
 
-  // ── user as reactive state so isDonorRegister updates without reload ──
+  const navigate = useNavigate();
+
   const [user, setUser] = useState(() => {
     const token = getFromLocalStorage(import.meta.env.VITE_TOKEN_NAME);
     return token ? decodedToken(token) : null;
   });
-
-  // ── FIX 1: useNavigate for post-registration redirect ────────────────
-  const navigate = useNavigate();
 
   const watchIdRef = useRef(null);
   const ageRef     = useRef(null);
@@ -63,15 +63,8 @@ export default function BloodCharity() {
   const isReadyToSearch = !!coords;
 
   const { data, isLoading, isError, error, isSuccess } = useFindMyNearestBloodRequestQuery(
-    {
-      selectedBlood,
-      searchRadius,
-      coords,
-      page: currentPage,
-    },
-    {
-      skip: !isReadyToSearch,
-    }
+    { selectedBlood, searchRadius, coords, page: currentPage },
+    { skip: !isReadyToSearch }
   );
 
   useEffect(() => {
@@ -147,13 +140,6 @@ export default function BloodCharity() {
     if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
   }, []);
 
-  // ── FIX 2: helper that sets tab state AND persists to localStorage ────
-  const handleTabChange = useCallback((tabId) => {
-    setActiveTab(tabId);
-    localStorage.setItem(TAB_STORAGE_KEY, tabId);
-  }, []);
-
-  // Guard: if no user in state, token was missing on mount
   if (!user) return null;
 
   const donorsWithDist = donors
@@ -197,24 +183,21 @@ export default function BloodCharity() {
 
     if (socket && connected) {
       socket.emit("donor_register", encrypted, (res) => {
-        if (!res?.success) {
-          console.log("Error registering donor");
-          return;
+        if (!res?.success) { console.log("Error registering donor"); return; }
+        if(res?.success){
+          navigate("/login");
         }
         if (res.token) {
+          
           setLocalStorage(import.meta.env.VITE_TOKEN_NAME, res.token);
           setUser(decodedToken(res.token));
+
         } else {
           setUser(prev => ({ ...prev, isDonorRegister: true }));
         }
-        // ── FIX 1: redirect after successful socket registration ──────
-        navigate("/login", { replace: true });
       });
     } else {
-      // Socket unavailable — still mark locally and redirect
       setUser(prev => ({ ...prev, isDonorRegister: true }));
-      // ── FIX 1: redirect in the fallback path too ──────────────────
-      navigate("/login", { replace: true });
     }
   };
 
@@ -234,7 +217,8 @@ export default function BloodCharity() {
     if (socket && connected) {
       socket.emit("blood_request", encrypted, (res) => {
         if (!res?.success) console.log("error blood request");
-        console.log("successfully blood request recorded", res);
+        // console.log("successfully blood request recorded", res);
+        toast.success(res.message)
       });
     }
   };
@@ -245,6 +229,10 @@ export default function BloodCharity() {
     <div style={{ minHeight: "100vh", background: "#fdf4f4", color: "#2c3e50", fontFamily: "'Crimson Pro', Georgia, serif", fontSize: 15 }}>
       {style}
 
+      {showIntro && (
+        <BloodIntroOverlay onDone={() => setShowIntro(false)} />
+      )}
+
       <AppHeader
         isTracking={isTracking}
         ageStr={ageStr}
@@ -252,11 +240,10 @@ export default function BloodCharity() {
         donorCount={donors.length}
       />
 
-      <main style={{ maxWidth: 680, margin: "0 auto", padding: "16px" }}>
+      <main  style={{ maxWidth: 680, margin: "0 auto", padding: "16px" }}>
 
         {permState === "denied" && <PermissionDenied onRetry={startTracking} />}
 
-        {/* ── LOCATION CARD ── */}
         {coords && (
           <div style={{ ...cs.card, background: "#fff5f5", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 20 }}>📍</span>
@@ -275,14 +262,12 @@ export default function BloodCharity() {
           </div>
         )}
 
-        {/* ── TABS ── */}
         <div style={{ display: "flex", gap: 4, marginBottom: 14, background: "#ffffff", border: "1px solid #f5c6c6", borderRadius: 10, padding: 4, boxShadow: "0 1px 4px rgba(192,57,43,0.07)" }}>
           {TABS.map(t => (
             <button
               key={t.id}
               className="tab-pill"
-              // ── FIX 2: use handleTabChange instead of raw setActiveTab ──
-              onClick={() => handleTabChange(t.id)}
+              onClick={() => setActiveTab(t.id)}
               style={{
                 flex: 1, padding: "7px 4px", borderRadius: 7, fontSize: 11, fontWeight: 600,
                 cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
@@ -681,7 +666,7 @@ export default function BloodCharity() {
                     </div>
                   )}
 
-                  {user.isDonorRegister ? (
+                  {user?.isDonorRegister ? (
                     <div style={{
                       width: "100%", padding: "20px", borderRadius: "14px",
                       background: "linear-gradient(135deg, #ffe5e5, #fff5f5)",
@@ -766,7 +751,6 @@ export default function BloodCharity() {
                 <div style={{ color: "#f39c12" }}>api.total: <span style={{ color: "#2ecc71" }}>{meta?.total ?? "—"}</span></div>
                 <div style={{ color: "#f39c12" }}>api.page: <span style={{ color: "#2ecc71" }}>{meta ? `${meta.page} / ${meta.totalPages}` : "—"}</span></div>
                 <div style={{ color: "#f39c12" }}>user.isDonorRegister: <span style={{ color: user.isDonorRegister ? "#2ecc71" : "#e74c3c" }}>{String(!!user.isDonorRegister)}</span></div>
-                <div style={{ color: "#f39c12" }}>activeTab (persisted): <span style={{ color: "#2ecc71" }}>{activeTab}</span></div>
                 {coords && (
                   <div style={{ color: "#f39c12" }}>nearestDonor: <span style={{ color: "#2ecc71" }}>{donorsWithDist[0] ? `${donorsWithDist[0].name} (${donorsWithDist[0].dist?.toFixed(2)}km, ${donorsWithDist[0].blood})` : "none"}</span></div>
                 )}
