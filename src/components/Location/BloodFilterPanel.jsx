@@ -518,26 +518,24 @@ const BloodFilterPanel = memo(function BloodFilterPanel({
   coords,
 }) {
   const [debouncedRadius, setDebouncedRadius] = useState(searchRadius);
-  const [debouncedBlood, setDebouncedBlood] = useState(selectedBlood);
-  const [debouncedPage, setDebouncedPage] = useState(currentPage);
 
+  // শুধু স্লাইডারের (Radius) জন্য Debounce রাখা হলো এবং টাইম 400ms থেকে 250ms করা হলো
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedRadius(searchRadius);
-      setDebouncedBlood(selectedBlood);
-      setDebouncedPage(currentPage);
-    }, 400); // 400ms debounce
+    }, 250);
     return () => clearTimeout(timer);
-  }, [searchRadius, selectedBlood, currentPage]);
+  }, [searchRadius]);
 
   const { data, isLoading, isError, isSuccess, isFetching } =
     useFindMyNearestBloodDonorQuery(
       {
         lat: coords?.lat,
         lng: coords?.lng,
-        blood: debouncedBlood === "A+" ? encodeURIComponent("A+") : (debouncedBlood === "B+" ? encodeURIComponent("B+") : (debouncedBlood === "O+" ? encodeURIComponent("O+") : (debouncedBlood === "AB+" ? encodeURIComponent("AB+") : debouncedBlood))),
+        // Blood Type এবং Page-এর জন্য Debounce সরিয়ে সরাসরি State ব্যবহার করা হলো
+        blood: selectedBlood === "A+" ? encodeURIComponent("A+") : (selectedBlood === "B+" ? encodeURIComponent("B+") : (selectedBlood === "O+" ? encodeURIComponent("O+") : (selectedBlood === "AB+" ? encodeURIComponent("AB+") : selectedBlood))),
         radius: debouncedRadius,
-        page: debouncedPage,
+        page: currentPage,
       },
       { skip: !coords?.lat || !coords?.lng }
     );
