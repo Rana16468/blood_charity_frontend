@@ -22,22 +22,36 @@ export const useSocket = () => {
 
       const token = getFromLocalStorage(import.meta.env.VITE_TOKEN_NAME);
 
+      // transports থেকে শুধু ["websocket"] বাদ দেওয়া হয়েছে অথবা নিচের মতো polling যুক্ত করা হয়েছে
       socketInstance = io(SOCKET_URL, {
-        transports: ["websocket"],
+        transports: ["polling", "websocket"], 
         query: {
           token: token || "",
         },
+        reconnectionAttempts: 5, // কানেকশন ড্রপ করলে ৫ বার চেষ্টা করবে
+        timeout: 10000,          // ১০ সেকেন্ড পর টাইমআউট হবে
       });
 
       socketRef.current = socketInstance;
       setSocket(socketInstance);
 
       socketInstance.on("connect", () => {
+        console.log("⚡ Socket Connected successfully!");
         setConnected(true);
       });
 
-      socketInstance.on("disconnect", () => {
+      socketInstance.on("disconnect", (reason) => {
+        console.log("🔌 Socket Disconnected. Reason:", reason);
         setConnected(false);
+      });
+
+     
+      socketInstance.on("connect_error", (err) => {
+        console.error("❌ Socket Connection Error:", err.message);
+      
+        if (err.data) {
+          console.error("❌ Error Data:", err.data);
+        }
       });
 
       socketInstance.on("connected", (data) => {
@@ -61,7 +75,7 @@ export const useSocket = () => {
       });
 
       socketInstance.on("error", (err) => {
-        console.log("❌ Socket error:", err?.message);
+        console.log("❌ General Socket error:", err?.message);
       });
     };
 

@@ -337,6 +337,8 @@ export default function BloodCharity() {
       locationData,
     });
 
+   
+
     const encrypted = await encrypt(
       {
         userId: user.id,
