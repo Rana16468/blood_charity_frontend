@@ -106,10 +106,7 @@ export default function BloodCharity() {
       formData,
       locationData,
     };
-    console.log("[RaktoDaan][FORM SUBMIT]", type, {
-      form: formData,
-      location: locationData,
-    });
+ 
     setFormLogs((prev) => [entry, ...prev].slice(0, 20));
   }, []);
 
@@ -258,7 +255,7 @@ export default function BloodCharity() {
 
       socket.emit("donor_register", encrypted, (res) => {
         if (!res?.success) {
-          console.log("Error registering donor", res);
+      
           toast.error(res?.message || "Error registering donor");
           return;
         }
@@ -351,9 +348,10 @@ export default function BloodCharity() {
       user.generate_secret_key,
     );
     if (socket && connected) {
-      socket.emit("blood_request", encrypted, (res) => {
+      socket.emit("blood_request", encrypted, (res, error) => {
+        console.log(error)
         if (!res?.success) console.log("error blood request");
-        // console.log("successfully blood request recorded", res);
+        
         toast.success(res.message);
       });
     }

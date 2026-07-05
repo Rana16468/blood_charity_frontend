@@ -59,7 +59,7 @@ export const useSocket = () => {
           const user = decodedToken(token);
           if (user?.role) {
             socketInstance.emit("join", { role: user.role.toLowerCase() });
-            console.log("✅ join emitted:", user.role.toLowerCase());
+          
           }
         } else {
           console.log("👤 Guest mode");
