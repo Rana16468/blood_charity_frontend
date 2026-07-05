@@ -22,14 +22,14 @@ export const useSocket = () => {
 
       const token = getFromLocalStorage(import.meta.env.VITE_TOKEN_NAME);
 
-      // transports থেকে শুধু ["websocket"] বাদ দেওয়া হয়েছে অথবা নিচের মতো polling যুক্ত করা হয়েছে
+
       socketInstance = io(SOCKET_URL, {
         transports: ["polling", "websocket"], 
         query: {
           token: token || "",
         },
-        reconnectionAttempts: 5, // কানেকশন ড্রপ করলে ৫ বার চেষ্টা করবে
-        timeout: 10000,          // ১০ সেকেন্ড পর টাইমআউট হবে
+        reconnectionAttempts: 5,
+        timeout: 10000,         
       });
 
       socketRef.current = socketInstance;
